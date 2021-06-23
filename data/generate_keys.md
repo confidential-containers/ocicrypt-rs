@@ -1,9 +1,9 @@
 ## Generate keypair for unit and integration tests
 
-### Create PMEM private key
+### Create PEM private key
 openssl genrsa -out private_key.pem
 
-### Create PMEM public key from PMEM private key
+### Create PEM public key from PEM private key
 openssl rsa -inform pem -outform pem -pubout -in private_key.pem -out public_key.pem
 
 ### Create self-signed root certificate

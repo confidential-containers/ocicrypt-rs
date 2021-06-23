@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::os::unix::io::FromRawFd;
 
-use crate::config::CryptoConfig;
+use crate::config::{CryptoConfig, DecryptConfig, EncryptConfig};
 
 // process_recipient_keys sorts the array of recipients by type.
 // Recipients may be either: x509 certificates, public keys,
@@ -181,7 +181,8 @@ pub fn create_decrypt_config(
     keys: Vec<String>,
     dec_recipients: Vec<String>,
 ) -> Result<CryptoConfig> {
-    let mut cc = CryptoConfig::new();
+    let mut dc = DecryptConfig::default();
+    let mut cc = CryptoConfig::default();
 
     let [_, _, mut x509s, _, _, _] = process_recipient_keys(dec_recipients)?;
 
@@ -194,27 +195,28 @@ pub fn create_decrypt_config(
         process_private_keyfiles(keys)?;
 
     if gpg_secret_key_ring_files.len() > 0 {
-        cc.decrypt_with_gpg(gpg_secret_key_ring_files, gpg_secret_key_passwords)?;
+        dc.decrypt_with_gpg(gpg_secret_key_ring_files, gpg_secret_key_passwords)?;
     }
 
     if x509s.len() > 0 {
-        cc.decrypt_with_x509s(x509s)?;
+        dc.decrypt_with_x509s(x509s)?;
     }
 
     if priv_keys.len() > 0 {
-        cc.decrypt_with_priv_keys(priv_keys, priv_keys_passwords)?;
+        dc.decrypt_with_priv_keys(priv_keys, priv_keys_passwords)?;
     }
 
     if pkcs11_yamls.len() > 0 {
         // TODO: Get pkcs11_config from the config file
         let pkcs11_config: Vec<Vec<u8>> = vec![vec![]];
-        cc.decrypt_with_pkcs11(pkcs11_config, pkcs11_yamls)?;
+        dc.decrypt_with_pkcs11(pkcs11_config, pkcs11_yamls)?;
     }
 
     if key_providers.len() > 0 {
-        cc.decrypt_with_key_provider(key_providers)?;
+        dc.decrypt_with_key_provider(key_providers)?;
     }
 
+    cc.decrypt_config = Some(dc);
     Ok(cc)
 }
 
@@ -230,12 +232,12 @@ pub fn create_decrypt_config(
 ///           - provider:<cmd/grpc>
 /// * `keys` - private keys potential needs for encryption.
 pub fn create_encrypt_config(recipients: Vec<String>, keys: Vec<String>) -> Result<CryptoConfig> {
-    let mut cc: CryptoConfig;
+    let mut ec = EncryptConfig::default();
+    let mut cc = CryptoConfig::default();
 
     if keys.len() > 0 {
-        cc = create_decrypt_config(keys, vec![]).unwrap();
-    } else {
-        cc = CryptoConfig::new();
+        let dc = create_decrypt_config(keys, vec![])?;
+        ec.decrypt_config = dc.decrypt_config;
     }
 
     if recipients.len() > 0 {
@@ -245,30 +247,31 @@ pub fn create_encrypt_config(recipients: Vec<String>, keys: Vec<String>) -> Resu
         // Create GPG client with guessed GPG version and default homedir
         if gpg_recipients.len() > 0 {
             // TODO: Check GPG installed and read GPG pub ring file
-            cc.encrypt_with_gpg(gpg_recipients, vec![])?;
+            ec.encrypt_with_gpg(gpg_recipients, vec![])?;
         }
 
         // Create Encryption Crypto Config
         if x509s.len() > 0 {
-            cc.encrypt_with_pkcs7(x509s)?;
+            ec.encrypt_with_pkcs7(x509s)?;
         }
 
         if pubkeys.len() > 0 {
-            cc.encrypt_with_jwe(pubkeys)?;
+            ec.encrypt_with_jwe(pubkeys)?;
         }
 
         if pkcs11_pubkeys.len() > 0 || pkcs11_yamls.len() > 0 {
             // TODO: Get pkcs11_config from the config file
             let pkcs11_config: Vec<Vec<u8>> = vec![vec![]];
 
-            cc.encrypt_with_pkcs11(pkcs11_config, pkcs11_pubkeys, pkcs11_yamls)?;
+            ec.encrypt_with_pkcs11(pkcs11_config, pkcs11_pubkeys, pkcs11_yamls)?;
         }
 
         if key_providers.len() > 0 {
-            cc.encrypt_with_key_provider(key_providers)?;
+            ec.encrypt_with_key_provider(key_providers)?;
         }
     }
 
+    cc.encrypt_config = Some(ec);
     Ok(cc)
 }
 
