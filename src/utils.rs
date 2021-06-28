@@ -70,8 +70,28 @@ pub fn parse_pkcs11_key_file(yaml_bytes: &Vec<u8>)
 }
 
 
+// setEnvVars sets the environment variables given in the map and locks the
+// environment from modification with the same function; if successful, you
+// *must* call restoreEnv with the return
+// value from this function
+fn set_env_vars(env: HashMap<String, String>)
+                -> Option<std::env::Vars> {
+    // TODO lock
+    if env.len() == 0 {
+        return None;
+    }
+    let oldenv = std::env::vars();
+    for (key, value) in std::env::vars() {
+        std::env::set_var(key, value);
+        // FIXME ? is there no way to check set-var's return code?
+    }
+    Some(oldenv)
+}
 
 
+
+// publicEncryptOAEP uses a public key described by a pkcs11 URI to OAEP
+// encrypt the given plaintext
 fn public_encrypt_oaep(pubKey: &Pkcs11KeyFileObject,
                        plaintext: &Vec<u8>)
                        -> Result<(Vec<u8>, String), std::io::Error> {
