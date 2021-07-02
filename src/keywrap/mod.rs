@@ -1,6 +1,5 @@
 pub mod pkcs11;
 
-use crate::config::CryptoConfig;
 use crate::config::EncryptConfig;
 use crate::config::DecryptConfig;
 use std::collections::HashMap;

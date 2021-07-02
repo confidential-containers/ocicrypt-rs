@@ -3,7 +3,7 @@ use crate::config::EncryptConfig;
 use crate::config::DecryptConfig;
 use std::io;
 use std::collections::HashMap;
-use pkcs11_uri::{Pkcs11Uri, PathAttributes, QueryAttributes};
+use pkcs11_uri::{Pkcs11Uri};
 use crate::utils::{parse_pkcs11_key_file, encrypt_multiple};
 
 struct Pkcs11 {
@@ -83,7 +83,7 @@ impl KeyWrapper for Pkcs11 {
     }
 
     fn get_key_ids_from_packet(&self,
-                               packet: String)
+                               _: String)
                                -> Result<Vec<u64>, std::io::Error> {
         // FIXME return nil, nil
         Ok(Vec::new())
@@ -91,7 +91,7 @@ impl KeyWrapper for Pkcs11 {
 
 
     fn get_recipients(&self,
-                      packet: String)
+                      _packet: String)
                       -> Result<Vec<String>, std::io::Error> {
         let mut v = Vec::new();
         v.push("[pkcs11]".to_string());
@@ -142,7 +142,7 @@ fn add_pub_keys(dc: &DecryptConfig,
 
 #[cfg(test)]
 mod kw_tests {
-    use super::*;
+    //use super::*;
 
     #[test]
     fn test_wrap_keys() {

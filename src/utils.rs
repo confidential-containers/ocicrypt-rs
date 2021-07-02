@@ -100,20 +100,20 @@ fn pkcs11_open_session(p11ctx: &pkcs11::Ctx,
     if pin.len() > 0 {
         // TODO
         let usertype = 0;
-        p11ctx.login(session, usertype, None /*pin*/);
+        let _ = p11ctx.login(session, usertype, None /*pin*/);
     }
     Ok(1)
 }
 
 // HasPIN allows the user to check whether a PIN has been provided either by the pin-value or the pin-source
 // attributes. It should be called before GetPIN(), which may still fail getting the PIN from a file for example.
-fn has_PIN(p11uri: &Pkcs11Uri) -> bool {
+fn has_pin(p11uri: &Pkcs11Uri) -> bool {
     match &p11uri.query_attributes.pin_value {
-        Some(x) => return true,
+        Some(_x) => return true,
         None => {},
     }
     match &p11uri.query_attributes.pin_source {
-        Some(x) => return true,
+        Some(_x) => return true,
         None => {},
     }
     false
@@ -122,7 +122,7 @@ fn has_PIN(p11uri: &Pkcs11Uri) -> bool {
 // GetPIN gets the PIN from either the pin-value or pin-source attribute; a user may want to call HasPIN()
 // before calling this function to determine whether a PIN has been provided at all so that an error code
 // returned by this function indicates that the PIN value could not be retrieved.
-fn get_PIN(p11uri: &Pkcs11Uri) -> Result<String, std::io::Error> {
+fn get_pin(p11uri: &Pkcs11Uri) -> Result<String, std::io::Error> {
     match &p11uri.query_attributes.pin_value {
         Some(x) => return Ok(x.to_string()),
         None => {},
@@ -167,22 +167,18 @@ fn pkcs11_uri_get_login_parameters(p11uri: &Pkcs11Uri,
                                    ->Result<(String, &String, u64), std::io::Error> {
 
     if private_key_operation {
-        if !has_PIN(p11uri) {
+        if !has_pin(p11uri) {
             //return "", "", 0, errors.New("Missing PIN for private key operation")
         }
     }
     // some devices require a PIN to find a *public* key object, others don't
-    let pin = get_PIN(p11uri).unwrap();
+    let pin = get_pin(p11uri).unwrap();
 
     let module_name = get_module(p11uri).unwrap();
 
+    // FIXME: handle error
     let slotid = p11uri.path_attributes.slot_id.unwrap();
-    let slotid_signed = slotid as i64;
 
-    // FIXME signage checks around here seem sus
-    if slotid_signed < 0 {
-        // TODO err
-    }
     if slotid > 0xffffffff {
         // TODO err
     }
@@ -216,11 +212,14 @@ fn pkcs11_uri_login(p11uri: &Pkcs11Uri,
     let module = pin_module_slotid.1;
     let slotid = pin_module_slotid.2;
 
-    let mut p11ctx = pkcs11::Ctx::new("yodawg").unwrap();
+    let mut p11ctx = pkcs11::Ctx::new(module).unwrap();
     let session = 64;
 
-    p11ctx.initialize(None);
+    let _ = p11ctx.initialize(None);
 
+    // FIXME: This should not be a >= 0 check. slotid will always be unsigned
+    // with rust pkcs11 uri. This should instead be an error check on
+    // pkcs11-uri-get-login-parameters.
     if slotid >= 0 {
         let session = pkcs11_open_session(&p11ctx, slotid, pin).unwrap();
         return Ok((p11ctx, session))
@@ -280,11 +279,11 @@ fn find_object(p11ctx: &pkcs11::Ctx,
         //msg += url.PathEscape(object_id)
     }
 
-    p11ctx.find_objects_init(session, &template);
+    let _ = p11ctx.find_objects_init(session, &template);
 
     let obj_handles = p11ctx.find_objects(session, 100).unwrap();
 
-    p11ctx.find_objects_final(session);
+    let _ = p11ctx.find_objects_final(session);
 
     if obj_handles.len() > 1 {
         // TODO error
@@ -333,9 +332,9 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
     let OAEPLabel: *mut pkcs11::types::CK_VOID = std::ptr::null_mut();
     let label_len: pkcs11::types::CK_ULONG = 0;
 
-    // OAEPSha1Params describes the OAEP parameters with sha1 hash algorithm;
+    // Oaep_Sha1_Params describes the OAEP parameters with sha1 hash algorithm;
     // needed by SoftHSM
-    let OAEPSha1Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
+    let Oaep_Sha1_Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
       = pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS {
         hashAlg: pkcs11::types::CKM_SHA1_RSA_PKCS,
         mgf: pkcs11::types::CKG_MGF1_SHA1,
@@ -345,9 +344,9 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
     };
 
 
-    // OAEPSha256Params describes the OAEP parameters with sha256 hash
+    // Oaep_Sha256_Params describes the OAEP parameters with sha256 hash
     // algorithm
-    let OAEPSha256Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
+    let Oaep_Sha256_Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
       = pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS {
         hashAlg: pkcs11::types::CKM_SHA256_RSA_PKCS,
         mgf: pkcs11::types::CKG_MGF1_SHA256,
@@ -357,10 +356,10 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
     };
 
     let oaep_hashalg = match oaephash.to_lowercase().as_str() {
-        "" => (OAEPSha1Params, "sha1".to_string()),
-        "sha1" => (OAEPSha1Params, "sha1".to_string()),
-        "sha256" => (OAEPSha256Params, "sha256".to_string()),
-        _ => (OAEPSha256Params, "sha256".to_string()),
+        "" => (Oaep_Sha1_Params, "sha1".to_string()),
+        "sha1" => (Oaep_Sha1_Params, "sha1".to_string()),
+        "sha256" => (Oaep_Sha256_Params, "sha256".to_string()),
+        _ => (Oaep_Sha256_Params, "sha256".to_string()),
         // FIXME: _ case should return nil and error
     };
     let mut oaep = oaep_hashalg.0;
@@ -378,7 +377,7 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
         // ulSourceDataLen, or something else?)
         ulParameterLen: 0,
     };
-    p11ctx.encrypt_init(session, &mech, p11_pub_key);
+    let _ = p11ctx.encrypt_init(session, &mech, p11_pub_key);
 
     let ciphertext = p11ctx.encrypt(session, plaintext).unwrap();
 
