@@ -13,6 +13,8 @@ struct Pkcs11 {
 // URI as an object
 pub struct Pkcs11KeyFileObject {
     pub uri: Pkcs11Uri,
+    // A map of environment variables needed by the pkcs11 module using this URI.
+    pub env: HashMap<String, String>,
 }
 
 

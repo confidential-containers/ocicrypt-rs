@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use pkcs11_uri::{Pkcs11Uri};
 use crate::keywrap::pkcs11::Pkcs11KeyFileObject;
+use http::Uri;
+
 
 extern crate serde_yaml;
 extern crate base64;
@@ -8,6 +10,7 @@ extern crate base64;
 // OAEPDefaultHash defines the default hash used for OAEP encryption; this
 // cannot be changed
 static OAEP_DEFAULT_HASH: &str = "sha1";
+
 
 
 
@@ -56,15 +59,9 @@ pub fn parse_pkcs11_key_file(yaml_bytes: &Vec<u8>)
 
     let p11_uri = parse_pkcs11_uri(&p11_key_file.uri).unwrap();
 
-    // TODO ?
-    // some equivalent to this golang code:
-    //   p11_uri.SetEnvMap(p11keyfile.Module.Env)
-    // but it's "only there for convenience"
-    // https://github.com/stefanberger/go-pkcs11uri/blob/master/pkcs11uri.go#L43-L45
-    // We could wrap the Pkcs11Uri object and add the env if needed.
-
     let kfo = Pkcs11KeyFileObject {
         uri: p11_uri,
+        env: p11_key_file.env,
     };
     Ok(kfo)
 }
@@ -74,7 +71,7 @@ pub fn parse_pkcs11_key_file(yaml_bytes: &Vec<u8>)
 // environment from modification with the same function; if successful, you
 // *must* call restoreEnv with the return
 // value from this function
-fn set_env_vars(env: HashMap<String, String>)
+fn set_env_vars(env: &HashMap<String, String>)
                 -> Option<std::env::Vars> {
     // TODO lock
     if env.len() == 0 {
@@ -88,15 +85,304 @@ fn set_env_vars(env: HashMap<String, String>)
     Some(oldenv)
 }
 
+// pkcs11_open_session opens a session with a pkcs11 device at the given slot
+// and logs in with the given PIN
+fn pkcs11_open_session(p11ctx: &pkcs11::Ctx,
+                       slotid: u64,
+                       pin: String)
+                       -> Result<pkcs11::types::CK_SESSION_HANDLE, std::io::Error> {
+    let flags = pkcs11::types::CKF_SERIAL_SESSION | pkcs11::types::CKF_RW_SESSION;
+    let session =
+      p11ctx.open_session(slotid,
+                          flags,
+                          None,
+                          None).unwrap();
+    if pin.len() > 0 {
+        // TODO
+        let usertype = 0;
+        p11ctx.login(session, usertype, None /*pin*/);
+    }
+    Ok(1)
+}
+
+// HasPIN allows the user to check whether a PIN has been provided either by the pin-value or the pin-source
+// attributes. It should be called before GetPIN(), which may still fail getting the PIN from a file for example.
+fn has_PIN(p11uri: &Pkcs11Uri) -> bool {
+    match &p11uri.query_attributes.pin_value {
+        Some(x) => return true,
+        None => {},
+    }
+    match &p11uri.query_attributes.pin_source {
+        Some(x) => return true,
+        None => {},
+    }
+    false
+}
+
+// GetPIN gets the PIN from either the pin-value or pin-source attribute; a user may want to call HasPIN()
+// before calling this function to determine whether a PIN has been provided at all so that an error code
+// returned by this function indicates that the PIN value could not be retrieved.
+fn get_PIN(p11uri: &Pkcs11Uri) -> Result<String, std::io::Error> {
+    match &p11uri.query_attributes.pin_value {
+        Some(x) => return Ok(x.to_string()),
+        None => {},
+    }
+    match &p11uri.query_attributes.pin_source {
+        Some(v) => {
+            let pinuri = &v.parse::<Uri>().unwrap();
+            //let parts = pinuri.into_parts();
+            //match parts.scheme.unwrap().as_str() {
+            match pinuri.scheme_str().unwrap() {
+                "" | "file" => {
+                    if !std::path::Path::new(pinuri.path()).is_absolute() {
+                        // TODO error
+                    }
+                    let pin = std::fs::read_to_string(pinuri.path()).unwrap();
+                    return Ok(pin)
+                },
+                _ => {},
+                // FIXME error
+                //return "", fmt.Errorf("PIN URI scheme %s is not supported", pinuri.Scheme)
+            }
+        },
+        None => {},
+    }
+    // FIXME error
+    Ok("".to_string())
+}
+
+fn get_module(p11uri: &Pkcs11Uri) -> Result<&String, std::io::Error> {
+    // FIXME this is not correct. see golang pkcs11-uri. need to search
+    // directories
+    Ok(p11uri.query_attributes.module_name.as_ref().unwrap())
+}
+
+
+// pkcs11_uri_get_login_parameters gets the parameters necessary for login from the
+// Pkcs11URI PIN and module are mandatory; slot-id is optional and if not found
+// -1 will be returned For a private_key_operation a PIN is required and if none
+// is given, this function will return an error
+fn pkcs11_uri_get_login_parameters(p11uri: &Pkcs11Uri,
+                                   private_key_operation: bool)
+                                   ->Result<(String, &String, u64), std::io::Error> {
+
+    if private_key_operation {
+        if !has_PIN(p11uri) {
+            //return "", "", 0, errors.New("Missing PIN for private key operation")
+        }
+    }
+    // some devices require a PIN to find a *public* key object, others don't
+    let pin = get_PIN(p11uri).unwrap();
+
+    let module_name = get_module(p11uri).unwrap();
+
+    let slotid = p11uri.path_attributes.slot_id.unwrap();
+    let slotid_signed = slotid as i64;
+
+    // FIXME signage checks around here seem sus
+    if slotid_signed < 0 {
+        // TODO err
+    }
+    if slotid > 0xffffffff {
+        // TODO err
+    }
+
+    Ok((pin, module_name, slotid))
+
+}
+
+// pkcs11_uri_get_key_id_and_label gets the key label by retrieving the value
+// of the 'object' attribute
+fn pkcs11_uri_get_key_id_and_label(p11uri: &Pkcs11Uri)
+                                   -> Result<(&Vec<u8>, &String), std::io::Error> {
+
+    let object_id = p11uri.path_attributes.object_id.as_ref().unwrap();
+    let object_label = p11uri.path_attributes.object_label.as_ref().unwrap();
+    Ok((object_id, object_label))
+}
+
+
+// pkcs11UriLogin uses the given pkcs11 URI to select the pkcs11 module (share
+// libary) and to get the PIN to use for login; if the URI contains a slot-id,
+// the given slot-id will be used, otherwise one slot after the other will be
+// attempted and the first one where login succeeds will be used
+fn pkcs11_uri_login(p11uri: &Pkcs11Uri,
+                    private_key_operation: bool)
+                    -> Result<(pkcs11::Ctx, pkcs11::types::CK_SESSION_HANDLE),
+                               std::io::Error> {
+    let pin_module_slotid
+      = pkcs11_uri_get_login_parameters(p11uri, private_key_operation).unwrap();
+    let pin = pin_module_slotid.0;
+    let module = pin_module_slotid.1;
+    let slotid = pin_module_slotid.2;
+
+    let mut p11ctx = pkcs11::Ctx::new("yodawg").unwrap();
+    let session = 64;
+
+    p11ctx.initialize(None);
+
+    if slotid >= 0 {
+        let session = pkcs11_open_session(&p11ctx, slotid, pin).unwrap();
+        return Ok((p11ctx, session))
+    }
+
+    let slots = p11ctx.get_slot_list(true).unwrap();
+
+    let tokenlabel = p11uri.path_attributes.token_label.as_ref().unwrap();
+
+    for slot in slots {
+        let ti = p11ctx.get_token_info(slot).unwrap();
+        if &String::from(ti.label) != tokenlabel {
+            continue;
+        }
+
+        let session = pkcs11_open_session(&p11ctx, slot, pin).unwrap();
+        return Ok((p11ctx, session))
+    }
+    // TODO: handle error cases
+    /*if len(pin) > 0 {
+        return nil, 0, errors.New("Could not create session to any slot and/or log in")
+    }
+    return nil, 0, errors.New("Could not create session to any slot")*/
+    Ok((p11ctx, session))
+}
+
+// find_object finds an object of the given class with the given object_id and/or
+// object_label
+fn find_object(p11ctx: &pkcs11::Ctx,
+               session: pkcs11::types::CK_SESSION_HANDLE,
+               class: u64,
+               object_id: &Vec<u8>,
+               object_label: &String)
+               -> Result<pkcs11::types::CK_OBJECT_HANDLE, std::io::Error> {
+    let mut msg = "".to_string();
+
+    let mut template = Vec::new();
+    let mut a = pkcs11::types::CK_ATTRIBUTE::new(pkcs11::types::CKA_CLASS);
+    a.set_ck_ulong(&class);
+    template.push(a);
+
+    if object_label.len() > 0 {
+        let mut b = pkcs11::types::CK_ATTRIBUTE::new(pkcs11::types::CKA_LABEL);
+        b.set_string(object_label);
+        template.push(b);
+        // FIXME surely this & format() to-string() is wrong
+        msg += &format!("object_label '{}'", object_label).to_string();
+    }
+    if object_id.len() > 0 {
+        let mut c = pkcs11::types::CK_ATTRIBUTE::new(pkcs11::types::CKA_ID);
+        c.set_bytes(object_id);
+        template.push(c);
+        if msg.len() > 0 {
+            msg += " and "
+        }
+        // TODO rust pathescape?
+        //msg += url.PathEscape(object_id)
+    }
+
+    p11ctx.find_objects_init(session, &template);
+
+    let obj_handles = p11ctx.find_objects(session, 100).unwrap();
+
+    p11ctx.find_objects_final(session);
+
+    if obj_handles.len() > 1 {
+        // TODO error
+    } else if obj_handles.len() == 1 {
+        return Ok(obj_handles[0]);
+    }
+    // TODO error
+    Ok(0)
+}
 
 
 // publicEncryptOAEP uses a public key described by a pkcs11 URI to OAEP
 // encrypt the given plaintext
-fn public_encrypt_oaep(pubKey: &Pkcs11KeyFileObject,
+fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
                        plaintext: &Vec<u8>)
                        -> Result<(Vec<u8>, String), std::io::Error> {
     // TODO
-    Ok((Vec::new(), "".to_string()))
+    // defer restoreEnv(oldenv)
+    // defer pkcs11Logout(p11ctx, session)
+
+    let oldenv = set_env_vars(&pub_key.env);
+
+    let p11ctx_session = pkcs11_uri_login(&pub_key.uri, false).unwrap();
+    let p11ctx = p11ctx_session.0;
+    let session = p11ctx_session.1;
+
+    let object_id_label = pkcs11_uri_get_key_id_and_label(&pub_key.uri).unwrap();
+    let object_id = object_id_label.0;
+    let object_label = object_id_label.1;
+
+    let p11_pub_key = find_object(&p11ctx,
+                                  session,
+                                  pkcs11::types::CKO_PUBLIC_KEY,
+                                  object_id,
+                                  object_label).unwrap();
+
+
+    //let mut hashalg = String::new();
+
+    let oaephash = std::env::var("OCICRYPT_OAEP_HASHALG").unwrap();
+
+    // TODO can we move this into global?
+
+    // OAEPLabel defines the label we use for OAEP encryption; this cannot be changed
+    // TODO
+    let OAEPLabel: *mut pkcs11::types::CK_VOID = std::ptr::null_mut();
+    let label_len: pkcs11::types::CK_ULONG = 0;
+
+    // OAEPSha1Params describes the OAEP parameters with sha1 hash algorithm;
+    // needed by SoftHSM
+    let OAEPSha1Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
+      = pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS {
+        hashAlg: pkcs11::types::CKM_SHA1_RSA_PKCS,
+        mgf: pkcs11::types::CKG_MGF1_SHA1,
+        source: pkcs11::types::CKZ_DATA_SPECIFIED,
+        pSourceData: OAEPLabel,
+        ulSourceDataLen: label_len,
+    };
+
+
+    // OAEPSha256Params describes the OAEP parameters with sha256 hash
+    // algorithm
+    let OAEPSha256Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
+      = pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS {
+        hashAlg: pkcs11::types::CKM_SHA256_RSA_PKCS,
+        mgf: pkcs11::types::CKG_MGF1_SHA256,
+        source: pkcs11::types::CKZ_DATA_SPECIFIED,
+        pSourceData: OAEPLabel,
+        ulSourceDataLen: label_len,
+    };
+
+    let oaep_hashalg = match oaephash.to_lowercase().as_str() {
+        "" => (OAEPSha1Params, "sha1".to_string()),
+        "sha1" => (OAEPSha1Params, "sha1".to_string()),
+        "sha256" => (OAEPSha256Params, "sha256".to_string()),
+        _ => (OAEPSha256Params, "sha256".to_string()),
+        // FIXME: _ case should return nil and error
+    };
+    let mut oaep = oaep_hashalg.0;
+    let hashalg = oaep_hashalg.1;
+
+    let oaep_p: *mut pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS = &mut oaep;
+
+    let mech = pkcs11::types::CK_MECHANISM {
+        mechanism: pkcs11::types::CKM_RSA_PKCS_OAEP,
+        // FIXME this can't be right
+        pParameter: oaep_p as *mut pkcs11::types::CK_VOID,
+        // FIXME: This should be something like "oaep.len()", but oaep is of
+        // type CK_RSA_PKCS_OAEP_PARAMS. Do we want the size of the struct
+        // here?  (Alternatively, do we want the size of pSourceData, i.e.
+        // ulSourceDataLen, or something else?)
+        ulParameterLen: 0,
+    };
+    p11ctx.encrypt_init(session, &mech, p11_pub_key);
+
+    let ciphertext = p11ctx.encrypt(session, plaintext).unwrap();
+
+    Ok((ciphertext, hashalg))
 }
 
 
