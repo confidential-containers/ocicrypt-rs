@@ -2,10 +2,88 @@ use std::collections::HashMap;
 use pkcs11_uri::{Pkcs11Uri};
 use crate::keywrap::pkcs11::Pkcs11KeyFileObject;
 use http::Uri;
+use std::fmt;
 
 
 extern crate serde_yaml;
 extern crate base64;
+
+
+#[derive(Debug)]
+pub enum OcicrsError {
+    Io(std::io::Error),
+    Pkcs11(pkcs11::errors::Error),
+    Anyhow(anyhow::Error),
+    SerdeYaml(serde_yaml::Error),
+    SerdeJson(serde_json::Error),
+    InvalidUri(http::uri::InvalidUri),
+    TODOGeneral,
+}
+
+impl From<std::io::Error> for OcicrsError {
+    fn from(err: std::io::Error) -> OcicrsError {
+        OcicrsError::Io(err)
+    }
+}
+
+impl From<pkcs11::errors::Error> for OcicrsError {
+    fn from(err: pkcs11::errors::Error) -> OcicrsError {
+        OcicrsError::Pkcs11(err)
+    }
+}
+
+impl From<anyhow::Error> for OcicrsError {
+    fn from(err: anyhow::Error) -> OcicrsError {
+        OcicrsError::Anyhow(err)
+    }
+}
+
+impl From<serde_yaml::Error> for OcicrsError {
+    fn from(err: serde_yaml::Error) -> OcicrsError {
+        OcicrsError::SerdeYaml(err)
+    }
+}
+
+impl From<serde_json::Error> for OcicrsError {
+    fn from(err: serde_json::Error) -> OcicrsError {
+        OcicrsError::SerdeJson(err)
+    }
+}
+
+impl From<http::uri::InvalidUri> for OcicrsError {
+    fn from(err: http::uri::InvalidUri) -> OcicrsError {
+        OcicrsError::InvalidUri(err)
+    }
+}
+
+impl fmt::Display for OcicrsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            OcicrsError::Io(ref err) => err.fmt(f),
+            OcicrsError::Pkcs11(ref err) => err.fmt(f),
+            OcicrsError::Anyhow(ref err) => err.fmt(f),
+            OcicrsError::SerdeYaml(ref err) => err.fmt(f),
+            OcicrsError::SerdeJson(ref err) => err.fmt(f),
+            OcicrsError::InvalidUri(ref err) => err.fmt(f),
+            OcicrsError::TODOGeneral => write!(f, "TODO General error"),
+        }
+    }
+}
+
+impl std::error::Error for OcicrsError {
+    fn description(&self) -> &str {
+        match *self {
+            OcicrsError::Io(ref err) => err.description(),
+            OcicrsError::Pkcs11(ref err) => err.description(),
+            OcicrsError::Anyhow(ref err) => err.description(),
+            OcicrsError::SerdeYaml(ref err) => err.description(),
+            OcicrsError::SerdeJson(ref err) => err.description(),
+            OcicrsError::InvalidUri(ref err) => err.description(),
+            OcicrsError::TODOGeneral => "TODO general error",
+        }
+    }
+}
+
 
 // OAEPDefaultHash defines the default hash used for OAEP encryption; this
 // cannot be changed
@@ -42,8 +120,9 @@ struct Pkcs11Recipient {
 }
 
 
-pub fn parse_pkcs11_uri(uri: &str) -> Result<Pkcs11Uri, std::io::Error> {
-    Ok(Pkcs11Uri::try_from(uri).unwrap())
+pub fn parse_pkcs11_uri(uri: &str) -> Result<Pkcs11Uri, OcicrsError> {
+    let x = Pkcs11Uri::try_from(uri)?;
+    Ok(x)
 }
 
 
@@ -53,11 +132,11 @@ pub fn parse_pkcs11_uri(uri: &str) -> Result<Pkcs11Uri, std::io::Error> {
 // pkcs11:
 //  - uri : <pkcs11 uri>                                                                  // An error is returned if the pkcs11 URI is malformed
 pub fn parse_pkcs11_key_file(yaml_bytes: &Vec<u8>)
-                             -> Result<Pkcs11KeyFileObject, std::io::Error> {
-    let s = serde_yaml::to_string(yaml_bytes).unwrap();
-    let p11_key_file: Pkcs11KeyFile = serde_yaml::from_str(&s).unwrap(); 
+                             -> Result<Pkcs11KeyFileObject, OcicrsError> {
+    let s = serde_yaml::to_string(yaml_bytes)?;
+    let p11_key_file: Pkcs11KeyFile = serde_yaml::from_str(&s)?;
 
-    let p11_uri = parse_pkcs11_uri(&p11_key_file.uri).unwrap();
+    let p11_uri = parse_pkcs11_uri(&p11_key_file.uri)?;
 
     let kfo = Pkcs11KeyFileObject {
         uri: p11_uri,
@@ -90,13 +169,13 @@ fn set_env_vars(env: &HashMap<String, String>)
 fn pkcs11_open_session(p11ctx: &pkcs11::Ctx,
                        slotid: u64,
                        pin: String)
-                       -> Result<pkcs11::types::CK_SESSION_HANDLE, std::io::Error> {
+                       -> Result<pkcs11::types::CK_SESSION_HANDLE, OcicrsError> {
     let flags = pkcs11::types::CKF_SERIAL_SESSION | pkcs11::types::CKF_RW_SESSION;
     let session =
       p11ctx.open_session(slotid,
                           flags,
                           None,
-                          None).unwrap();
+                          None)?;
     if pin.len() > 0 {
         // TODO
         let usertype = 0;
@@ -122,22 +201,24 @@ fn has_pin(p11uri: &Pkcs11Uri) -> bool {
 // GetPIN gets the PIN from either the pin-value or pin-source attribute; a user may want to call HasPIN()
 // before calling this function to determine whether a PIN has been provided at all so that an error code
 // returned by this function indicates that the PIN value could not be retrieved.
-fn get_pin(p11uri: &Pkcs11Uri) -> Result<String, std::io::Error> {
+fn get_pin(p11uri: &Pkcs11Uri) -> Result<String, OcicrsError> {
     match &p11uri.query_attributes.pin_value {
         Some(x) => return Ok(x.to_string()),
         None => {},
     }
     match &p11uri.query_attributes.pin_source {
         Some(v) => {
-            let pinuri = &v.parse::<Uri>().unwrap();
-            //let parts = pinuri.into_parts();
-            //match parts.scheme.unwrap().as_str() {
-            match pinuri.scheme_str().unwrap() {
+            let pinuri = &v.parse::<Uri>()?;
+            let p = match pinuri.scheme_str() {
+                Some(x) => x,
+                None => return Err(OcicrsError::TODOGeneral),
+            };
+            match p {
                 "" | "file" => {
                     if !std::path::Path::new(pinuri.path()).is_absolute() {
                         // TODO error
                     }
-                    let pin = std::fs::read_to_string(pinuri.path()).unwrap();
+                    let pin = std::fs::read_to_string(pinuri.path())?;
                     return Ok(pin)
                 },
                 _ => {},
@@ -151,10 +232,13 @@ fn get_pin(p11uri: &Pkcs11Uri) -> Result<String, std::io::Error> {
     Ok("".to_string())
 }
 
-fn get_module(p11uri: &Pkcs11Uri) -> Result<&String, std::io::Error> {
+fn get_module(p11uri: &Pkcs11Uri) -> Result<&String, OcicrsError> {
     // FIXME this is not correct. see golang pkcs11-uri. need to search
     // directories
-    Ok(p11uri.query_attributes.module_name.as_ref().unwrap())
+    match p11uri.query_attributes.module_name.as_ref() {
+        Some(x) => Ok(x),
+        None => Err(OcicrsError::TODOGeneral),
+    }
 }
 
 
@@ -164,24 +248,24 @@ fn get_module(p11uri: &Pkcs11Uri) -> Result<&String, std::io::Error> {
 // is given, this function will return an error
 fn pkcs11_uri_get_login_parameters(p11uri: &Pkcs11Uri,
                                    private_key_operation: bool)
-                                   ->Result<(String, &String, u64), std::io::Error> {
+                                   -> Result<(String, &String, Option<u64>), OcicrsError> {
 
     if private_key_operation {
         if !has_pin(p11uri) {
-            //return "", "", 0, errors.New("Missing PIN for private key operation")
+            return Err(OcicrsError::TODOGeneral);
         }
     }
     // some devices require a PIN to find a *public* key object, others don't
-    let pin = get_pin(p11uri).unwrap();
+    let pin = get_pin(p11uri)?;
 
-    let module_name = get_module(p11uri).unwrap();
+    let module_name = get_module(p11uri)?;
 
-    // FIXME: handle error
-    let slotid = p11uri.path_attributes.slot_id.unwrap();
+    //let slotid = match p11uri.path_attributes.slot_id {
+        //Some(x) => x,
+        //None => return None,
+    //};
+    let slotid = p11uri.path_attributes.slot_id;
 
-    if slotid > 0xffffffff {
-        // TODO err
-    }
 
     Ok((pin, module_name, slotid))
 
@@ -190,10 +274,16 @@ fn pkcs11_uri_get_login_parameters(p11uri: &Pkcs11Uri,
 // pkcs11_uri_get_key_id_and_label gets the key label by retrieving the value
 // of the 'object' attribute
 fn pkcs11_uri_get_key_id_and_label(p11uri: &Pkcs11Uri)
-                                   -> Result<(&Vec<u8>, &String), std::io::Error> {
+                                   -> Result<(&Vec<u8>, &String), OcicrsError> {
 
-    let object_id = p11uri.path_attributes.object_id.as_ref().unwrap();
-    let object_label = p11uri.path_attributes.object_label.as_ref().unwrap();
+    let object_id = match p11uri.path_attributes.object_id.as_ref() {
+        Some(x) => x,
+        None => return Err(OcicrsError::TODOGeneral),
+    };
+    let object_label = match p11uri.path_attributes.object_label.as_ref() {
+        Some(x) => x,
+        None => return Err(OcicrsError::TODOGeneral),
+    };
     Ok((object_id, object_label))
 }
 
@@ -205,14 +295,14 @@ fn pkcs11_uri_get_key_id_and_label(p11uri: &Pkcs11Uri)
 fn pkcs11_uri_login(p11uri: &Pkcs11Uri,
                     private_key_operation: bool)
                     -> Result<(pkcs11::Ctx, pkcs11::types::CK_SESSION_HANDLE),
-                               std::io::Error> {
+                               OcicrsError> {
     let pin_module_slotid
-      = pkcs11_uri_get_login_parameters(p11uri, private_key_operation).unwrap();
+      = pkcs11_uri_get_login_parameters(p11uri, private_key_operation)?;
     let pin = pin_module_slotid.0;
     let module = pin_module_slotid.1;
     let slotid = pin_module_slotid.2;
 
-    let mut p11ctx = pkcs11::Ctx::new(module).unwrap();
+    let mut p11ctx = pkcs11::Ctx::new(module)?;
     let session = 64;
 
     let _ = p11ctx.initialize(None);
@@ -220,30 +310,44 @@ fn pkcs11_uri_login(p11uri: &Pkcs11Uri,
     // FIXME: This should not be a >= 0 check. slotid will always be unsigned
     // with rust pkcs11 uri. This should instead be an error check on
     // pkcs11-uri-get-login-parameters.
-    if slotid >= 0 {
-        let session = pkcs11_open_session(&p11ctx, slotid, pin).unwrap();
-        return Ok((p11ctx, session))
-    }
+    match slotid {
+        Some(sid) => {
+            if sid > 0xffffffff {
+                return Err(OcicrsError::TODOGeneral);
+            }
+            let session = pkcs11_open_session(&p11ctx, sid, pin)?;
+            return Ok((p11ctx, session))
+        },
+        None => {
+            let slots = p11ctx.get_slot_list(true)?;
 
-    let slots = p11ctx.get_slot_list(true).unwrap();
+            let tokenlabel = match p11uri.path_attributes.token_label.as_ref() {
+                Some(x) => x,
+                None => return Err(OcicrsError::TODOGeneral),
+            };
 
-    let tokenlabel = p11uri.path_attributes.token_label.as_ref().unwrap();
+            for slot in slots {
+                //let ti = p11ctx.get_token_info(slot)?;
+                let ti = match p11ctx.get_token_info(slot) {
+                    Ok(o) => o,
+                    Err(e) => return Err(OcicrsError::TODOGeneral),
+                };
+                if &String::from(ti.label) != tokenlabel {
+                    continue;
+                }
 
-    for slot in slots {
-        let ti = p11ctx.get_token_info(slot).unwrap();
-        if &String::from(ti.label) != tokenlabel {
-            continue;
+                let session = pkcs11_open_session(&p11ctx, slot, pin)?;
+                return Ok((p11ctx, session))
+            }
+            // TODO: handle error cases
+            /*if len(pin) > 0 {
+                return nil, 0, errors.New("Could not create session to any slot and/or log in")
+            }
+            return nil, 0, errors.New("Could not create session to any slot")*/
+            Ok((p11ctx, session))
         }
+    }
 
-        let session = pkcs11_open_session(&p11ctx, slot, pin).unwrap();
-        return Ok((p11ctx, session))
-    }
-    // TODO: handle error cases
-    /*if len(pin) > 0 {
-        return nil, 0, errors.New("Could not create session to any slot and/or log in")
-    }
-    return nil, 0, errors.New("Could not create session to any slot")*/
-    Ok((p11ctx, session))
 }
 
 // find_object finds an object of the given class with the given object_id and/or
@@ -253,7 +357,7 @@ fn find_object(p11ctx: &pkcs11::Ctx,
                class: u64,
                object_id: &Vec<u8>,
                object_label: &String)
-               -> Result<pkcs11::types::CK_OBJECT_HANDLE, std::io::Error> {
+               -> Result<pkcs11::types::CK_OBJECT_HANDLE, OcicrsError> {
     let mut msg = "".to_string();
 
     let mut template = Vec::new();
@@ -281,7 +385,7 @@ fn find_object(p11ctx: &pkcs11::Ctx,
 
     let _ = p11ctx.find_objects_init(session, &template);
 
-    let obj_handles = p11ctx.find_objects(session, 100).unwrap();
+    let obj_handles = p11ctx.find_objects(session, 100)?;
 
     let _ = p11ctx.find_objects_final(session);
 
@@ -299,18 +403,18 @@ fn find_object(p11ctx: &pkcs11::Ctx,
 // encrypt the given plaintext
 fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
                        plaintext: &Vec<u8>)
-                       -> Result<(Vec<u8>, String), std::io::Error> {
+                       -> Result<(Vec<u8>, String), OcicrsError> {
     // TODO
     // defer restoreEnv(oldenv)
     // defer pkcs11Logout(p11ctx, session)
 
     let oldenv = set_env_vars(&pub_key.env);
 
-    let p11ctx_session = pkcs11_uri_login(&pub_key.uri, false).unwrap();
+    let p11ctx_session = pkcs11_uri_login(&pub_key.uri, false)?;
     let p11ctx = p11ctx_session.0;
     let session = p11ctx_session.1;
 
-    let object_id_label = pkcs11_uri_get_key_id_and_label(&pub_key.uri).unwrap();
+    let object_id_label = pkcs11_uri_get_key_id_and_label(&pub_key.uri)?;
     let object_id = object_id_label.0;
     let object_label = object_id_label.1;
 
@@ -318,12 +422,15 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
                                   session,
                                   pkcs11::types::CKO_PUBLIC_KEY,
                                   object_id,
-                                  object_label).unwrap();
+                                  object_label)?;
 
 
     //let mut hashalg = String::new();
 
-    let oaephash = std::env::var("OCICRYPT_OAEP_HASHALG").unwrap();
+    let oaephash = match std::env::var("OCICRYPT_OAEP_HASHALG") {
+        Ok(x) => x,
+        Err(x) => return Err(OcicrsError::TODOGeneral),
+    };
 
     // TODO can we move this into global?
 
@@ -379,7 +486,7 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
     };
     let _ = p11ctx.encrypt_init(session, &mech, p11_pub_key);
 
-    let ciphertext = p11ctx.encrypt(session, plaintext).unwrap();
+    let ciphertext = p11ctx.encrypt(session, plaintext)?;
 
     Ok((ciphertext, hashalg))
 }
@@ -407,14 +514,14 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
 // }
 pub fn encrypt_multiple(pub_keys: &Vec<Pkcs11KeyFileObject>,
                        data: &Vec<u8>)
-                       -> Result<Vec<u8>, std::io::Error> {
+                       -> Result<Vec<u8>, OcicrsError> {
 
     let mut pkcs11_blob: Pkcs11Blob = Pkcs11Blob{
         version: 0,
         recipients: Vec::new(),
     };
     for pub_key in pub_keys {
-        let ciphertext_hashalg = public_encrypt_oaep(pub_key, data).unwrap();
+        let ciphertext_hashalg = public_encrypt_oaep(pub_key, data)?;
         let ciphertext = ciphertext_hashalg.0;
         let mut hashalg = ciphertext_hashalg.1;
 
@@ -429,5 +536,5 @@ pub fn encrypt_multiple(pub_keys: &Vec<Pkcs11KeyFileObject>,
 
         pkcs11_blob.recipients.push(recipient);
     }
-    Ok(serde_json::to_vec(&pkcs11_blob).unwrap())
+    Ok(serde_json::to_vec(&pkcs11_blob)?)
 }
