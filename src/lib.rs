@@ -4,3 +4,4 @@ pub mod helpers;
 pub mod spec;
 pub mod keywrap;
 pub mod utils;
+pub mod ors_error;
