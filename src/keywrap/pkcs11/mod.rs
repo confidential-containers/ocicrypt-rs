@@ -5,6 +5,7 @@ use std::io;
 use std::collections::HashMap;
 use pkcs11_uri::{Pkcs11Uri};
 use crate::utils::{parse_pkcs11_key_file, encrypt_multiple};
+use crate::ors_error::OrsError;
 
 struct Pkcs11 {
 }
@@ -36,7 +37,7 @@ impl KeyWrapper for Pkcs11 {
     fn wrap_keys(&self,
                  ec: &EncryptConfig,
                  opts_data: &Vec<u8>)
-                 -> Result<Vec<u8>, io::Error> {
+                 -> Result<Vec<u8>, OrsError> {
         let mut x: Vec<Vec<u8>> = Vec::new();
         let ps: &Vec<Vec<u8>> = &ec.param["pkcs11-pubkeys"];
         for p in ps {
@@ -45,14 +46,19 @@ impl KeyWrapper for Pkcs11 {
         for y in &ec.param["pkcs11-yamsl"] {
             x.push(y.to_vec());
         }
+        let dc = match ec.decrypt_config.as_ref() {
+            Some(x) => x,
+            None => return Err(OrsError::TODOGeneral),
+        };
+
         let pkcs11_recipients: Vec<Pkcs11KeyFileObject>
-          = add_pub_keys(&(ec.decrypt_config.as_ref().unwrap()), &x).unwrap();
+          = add_pub_keys(&dc, &x)?;
 
         if pkcs11_recipients.len() == 0 {
             return Ok(Vec::new())
         }
 
-        let json_str = encrypt_multiple(&pkcs11_recipients, opts_data).unwrap();
+        let json_str = encrypt_multiple(&pkcs11_recipients, opts_data)?;
 
         Ok(json_str)
     }
@@ -60,7 +66,7 @@ impl KeyWrapper for Pkcs11 {
     fn unwrap_key(&self,
                   dc: &DecryptConfig,
                   annotation: &Vec<u8>)
-                  -> Result<Vec<u8>, std::io::Error> {
+                  -> Result<Vec<u8>, OrsError> {
         // TODO
         Ok(b"".to_vec())
     }
@@ -101,7 +107,7 @@ impl KeyWrapper for Pkcs11 {
 
 
 fn p11_conf_from_params(dcparameters: &HashMap<String, Vec<Vec<u8>>>)
-                        -> Result<Pkcs11Config, std::io::Error> {
+                        -> Result<Pkcs11Config, OrsError> {
     // FIXME: c is just a placeholder for now
     let c = Pkcs11Config{
         module_directories: Vec::default(),
@@ -118,16 +124,16 @@ fn p11_conf_from_params(dcparameters: &HashMap<String, Vec<Vec<u8>>>)
 
 fn add_pub_keys(dc: &DecryptConfig,
                 pub_keys: &Vec<Vec<u8>>)
-                -> Result<Vec<Pkcs11KeyFileObject>, std::io::Error> {
+                -> Result<Vec<Pkcs11KeyFileObject>, OrsError> {
     let mut pkcs11_keys = Vec::new();
     if pub_keys.len() == 0 {
         return Ok(pkcs11_keys);
     }
 
-    let p11_conf = p11_conf_from_params(&dc.param).unwrap();
+    let p11_conf = p11_conf_from_params(&dc.param)?;
 
     for k in pub_keys {
-            let key: Pkcs11KeyFileObject = parse_pkcs11_key_file(k).unwrap();
+            let key: Pkcs11KeyFileObject = parse_pkcs11_key_file(k)?;
             // FIXME: Do we need more fields for the key here?
             //key.uri.SetModuleDirectories(p11conf.ModuleDirectories);
             //key.uri.SetAllowedModulePaths(p11conf.AllowedModulePaths);
