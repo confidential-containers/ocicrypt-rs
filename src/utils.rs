@@ -367,7 +367,7 @@ fn get_oaep_hashalg(oaephash: String)
     };
     Ok(tmp)
 }
-fn get_oaep(hashalg: String) -> Result<pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS,
+fn get_oaep(hashalg: &String) -> Result<pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS,
                                        OrsError> {
 
     // TODO: See get_oaep_hashalg
@@ -510,8 +510,8 @@ pub fn encrypt_multiple(pub_keys: &Vec<Pkcs11KeyFileObject>,
 // privateDecryptOAEP uses a pkcs11 URI describing a private key to OAEP decrypt a ciphertext
 //func privateDecryptOAEP(privKeyObj *Pkcs11KeyFileObject, ciphertext []byte, hashalg string) ([]byte, error) {
 fn private_decrypt_oaep(priv_key: &Pkcs11KeyFileObject,
-                        ciphertext: Vec<u8>,
-                        hashalg: String)
+                        ciphertext: &Vec<u8>,
+                        hashalg: &String)
                         -> Result<Vec<u8>, OrsError> {
     // FIXME remove boilerplate similar to public_encrypt_oaep
     // TODO
@@ -597,6 +597,7 @@ pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
                     errs += "1";
                     continue;
                 }
+                c
             }
             Err(e) => {
                 // FIXME append error message of e
@@ -607,9 +608,9 @@ pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
         };
         // try all keys until one works
         for priv_key in priv_keys {
-            let plaintext = private_decrypt_oaep(priv_key, ciphertext, recipient.hash);
+            let plaintext = private_decrypt_oaep(priv_key, &ciphertext, &recipient.hash);
             match plaintext {
-                Ok(x) => return x,
+                Ok(x) => return Ok(x),
                 Err(e) => {
                     // TODO
                     //if uri, err2 := privKeyObj.Uri.Format(); err2 == nil {
