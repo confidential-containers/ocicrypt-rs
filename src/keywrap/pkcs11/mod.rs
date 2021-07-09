@@ -54,7 +54,7 @@ impl KeyWrapper for Pkcs11 {
         let pkcs11_recipients: Vec<Pkcs11KeyFileObject>
           = add_pub_keys(&dc, &x)?;
 
-        if pkcs11_recipients.len() == 0 {
+        if pkcs11_recipients.is_empty() {
             return Ok(Vec::new())
         }
 
@@ -71,7 +71,7 @@ impl KeyWrapper for Pkcs11 {
         let mut pkcs11_keys = Vec::new();
 
         let priv_keys = self.get_private_keys(&dc.param);
-        if priv_keys.len() == 0 {
+        if priv_keys.is_empty() {
             return Err(OrsError::TODOGeneral);
         }
 
@@ -99,7 +99,7 @@ impl KeyWrapper for Pkcs11 {
     fn no_possible_keys(&self,
                         dcparameters: &HashMap<String, Vec<Vec<u8>>>)
                         -> bool {
-        self.get_private_keys(dcparameters).len() == 0
+        self.get_private_keys(dcparameters).is_empty()
     }
 
     fn get_private_keys<'a>(&self,

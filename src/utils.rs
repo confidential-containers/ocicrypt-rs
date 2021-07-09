@@ -78,7 +78,7 @@ pub fn parse_pkcs11_key_file(yaml_bytes: &Vec<u8>)
 fn set_env_vars(env: &HashMap<String, String>)
                 -> Option<std::env::Vars> {
     // TODO lock
-    if env.len() == 0 {
+    if env.is_empty() {
         return None;
     }
     let oldenv = std::env::vars();
@@ -101,7 +101,7 @@ fn pkcs11_open_session(p11ctx: &pkcs11::Ctx,
                           flags,
                           None,
                           None)?;
-    if pin.len() > 0 {
+    if !pin.is_empty() {
         // TODO
         let usertype = 0;
         let _ = p11ctx.login(session, usertype, None /*pin*/);
@@ -290,18 +290,18 @@ fn find_object(p11ctx: &pkcs11::Ctx,
     a.set_ck_ulong(&class);
     template.push(a);
 
-    if object_label.len() > 0 {
+    if !object_label.is_empty() {
         let mut b = pkcs11::types::CK_ATTRIBUTE::new(pkcs11::types::CKA_LABEL);
         b.set_string(object_label);
         template.push(b);
         // FIXME surely this & format() to-string() is wrong
         msg += &format!("object_label '{}'", object_label).to_string();
     }
-    if object_id.len() > 0 {
+    if !object_id.is_empty() {
         let mut c = pkcs11::types::CK_ATTRIBUTE::new(pkcs11::types::CKA_ID);
         c.set_bytes(object_id);
         template.push(c);
-        if msg.len() > 0 {
+        if !msg.is_empty() {
             msg += " and "
         }
         // TODO rust pathescape?
@@ -590,7 +590,7 @@ pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
         //ciphertext, err := base64.StdEncoding.DecodeString(recipient.Blob)
         let ciphertext = match base64::decode(recipient.blob) {
             Ok(c) => {
-                if c.len() == 0 {
+                if c.is_empty() {
                     // FIXME append error message of e
                     //"Base64 decoding failed: %s\n", err
                     errs += "1";
