@@ -324,41 +324,11 @@ fn find_object(p11ctx: &pkcs11::Ctx,
     Ok(0)
 }
 
-
-// publicEncryptOAEP uses a public key described by a pkcs11 URI to OAEP
-// encrypt the given plaintext
-fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
-                       plaintext: &Vec<u8>)
-                       -> Result<(Vec<u8>, String), OrsError> {
-    // TODO
-    // defer restoreEnv(oldenv)
-    // defer pkcs11Logout(p11ctx, session)
-
-    let oldenv = set_env_vars(&pub_key.env);
-
-    let p11ctx_session = pkcs11_uri_login(&pub_key.uri, false)?;
-    let p11ctx = p11ctx_session.0;
-    let session = p11ctx_session.1;
-
-    let object_id_label = pkcs11_uri_get_key_id_and_label(&pub_key.uri)?;
-    let object_id = object_id_label.0;
-    let object_label = object_id_label.1;
-
-    let p11_pub_key = find_object(&p11ctx,
-                                  session,
-                                  pkcs11::types::CKO_PUBLIC_KEY,
-                                  object_id,
-                                  object_label)?;
-
-
-    //let mut hashalg = String::new();
-
-    let oaephash = match std::env::var("OCICRYPT_OAEP_HASHALG") {
-        Ok(x) => x,
-        Err(x) => return Err(OrsError::TODOGeneral),
-    };
-
-    // TODO can we move this into global?
+fn get_oaep_hashalg(oaephash: String)
+                    -> Result<(pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS, String), OrsError> {
+    // TODO can we move initialize these Params variables once?
+    // Thread safety issue in rust when naively trying to make it static-global
+    // See also get_oaep()
 
     // OAEPLabel defines the label we use for OAEP encryption; this cannot be changed
     // TODO
@@ -388,13 +358,85 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
         ulSourceDataLen: label_len,
     };
 
-    let oaep_hashalg = match oaephash.to_lowercase().as_str() {
+    let tmp = match oaephash.to_lowercase().as_str() {
         "" => (Oaep_Sha1_Params, "sha1".to_string()),
         "sha1" => (Oaep_Sha1_Params, "sha1".to_string()),
         "sha256" => (Oaep_Sha256_Params, "sha256".to_string()),
-        _ => (Oaep_Sha256_Params, "sha256".to_string()),
         // FIXME: _ case should return nil and error
+        _ => (Oaep_Sha256_Params, "sha256".to_string()),
     };
+    Ok(tmp)
+}
+fn get_oaep(hashalg: String) -> Result<pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS,
+                                       OrsError> {
+
+    // TODO: See get_oaep_hashalg
+    let OAEPLabel: *mut pkcs11::types::CK_VOID = std::ptr::null_mut();
+    let label_len: pkcs11::types::CK_ULONG = 0;
+
+    // Oaep_Sha1_Params describes the OAEP parameters with sha1 hash algorithm;
+    // needed by SoftHSM
+    let Oaep_Sha1_Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
+      = pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS {
+        hashAlg: pkcs11::types::CKM_SHA1_RSA_PKCS,
+        mgf: pkcs11::types::CKG_MGF1_SHA1,
+        source: pkcs11::types::CKZ_DATA_SPECIFIED,
+        pSourceData: OAEPLabel,
+        ulSourceDataLen: label_len,
+    };
+    // Oaep_Sha256_Params describes the OAEP parameters with sha256 hash
+    // algorithm
+    let Oaep_Sha256_Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
+      = pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS {
+        hashAlg: pkcs11::types::CKM_SHA256_RSA_PKCS,
+        mgf: pkcs11::types::CKG_MGF1_SHA256,
+        source: pkcs11::types::CKZ_DATA_SPECIFIED,
+        pSourceData: OAEPLabel,
+        ulSourceDataLen: label_len,
+    };
+
+    let oaep = match hashalg.to_lowercase().as_str() {
+        "sha1" | "" => Oaep_Sha1_Params,
+        "sha256" => Oaep_Sha256_Params,
+        // FIXME: _ case should error
+        _ => Oaep_Sha256_Params,
+    };
+    Ok(oaep)
+}
+
+
+// publicEncryptOAEP uses a public key described by a pkcs11 URI to OAEP
+// encrypt the given plaintext
+fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
+                       plaintext: &Vec<u8>)
+                       -> Result<(Vec<u8>, String), OrsError> {
+    // TODO
+    // defer restoreEnv(oldenv)
+    // defer pkcs11Logout(p11ctx, session)
+
+    let oldenv = set_env_vars(&pub_key.env);
+
+    let p11ctx_session = pkcs11_uri_login(&pub_key.uri, false)?;
+    let p11ctx = p11ctx_session.0;
+    let session = p11ctx_session.1;
+
+    let object_id_label = pkcs11_uri_get_key_id_and_label(&pub_key.uri)?;
+    let object_id = object_id_label.0;
+    let object_label = object_id_label.1;
+
+    let p11_pub_key = find_object(&p11ctx,
+                                  session,
+                                  pkcs11::types::CKO_PUBLIC_KEY,
+                                  object_id,
+                                  object_label)?;
+
+    let oaephash = match std::env::var("OCICRYPT_OAEP_HASHALG") {
+        Ok(x) => x,
+        Err(x) => return Err(OrsError::TODOGeneral),
+    };
+
+    let oaep_hashalg = get_oaep_hashalg(oaephash)?;
+
     let mut oaep = oaep_hashalg.0;
     let hashalg = oaep_hashalg.1;
 
@@ -410,7 +452,7 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
         // ulSourceDataLen, or something else?)
         ulParameterLen: 0,
     };
-    let _ = p11ctx.encrypt_init(session, &mech, p11_pub_key);
+    let _ = p11ctx.encrypt_init(session, &mech, p11_pub_key)?;
 
     let ciphertext = p11ctx.encrypt(session, plaintext)?;
 
@@ -464,3 +506,124 @@ pub fn encrypt_multiple(pub_keys: &Vec<Pkcs11KeyFileObject>,
     }
     Ok(serde_json::to_vec(&pkcs11_blob)?)
 }
+
+// privateDecryptOAEP uses a pkcs11 URI describing a private key to OAEP decrypt a ciphertext
+//func privateDecryptOAEP(privKeyObj *Pkcs11KeyFileObject, ciphertext []byte, hashalg string) ([]byte, error) {
+fn private_decrypt_oaep(priv_key: &Pkcs11KeyFileObject,
+                        ciphertext: Vec<u8>,
+                        hashalg: String)
+                        -> Result<Vec<u8>, OrsError> {
+    // FIXME remove boilerplate similar to public_encrypt_oaep
+    // TODO
+    // defer restoreEnv(oldenv)
+    // defer pkcs11Logout(p11ctx, session)
+    let oldenv = set_env_vars(&priv_key.env);
+
+    let p11ctx_session = pkcs11_uri_login(&priv_key.uri, true)?;
+    let p11ctx = p11ctx_session.0;
+    let session = p11ctx_session.1;
+
+    let object_id_label = pkcs11_uri_get_key_id_and_label(&priv_key.uri)?;
+    let object_id = object_id_label.0;
+    let object_label = object_id_label.1;
+
+    let p11_priv_key = find_object(&p11ctx,
+                                  session,
+                                  pkcs11::types::CKO_PRIVATE_KEY,
+                                  object_id,
+                                  object_label)?;
+
+    let mut oaep = get_oaep(hashalg)?;
+
+    // FIXME: boilerplate similar to encrypt_init
+    let oaep_p: *mut pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS = &mut oaep;
+    let mech = pkcs11::types::CK_MECHANISM {
+        mechanism: pkcs11::types::CKM_RSA_PKCS_OAEP,
+        // FIXME this can't be right
+        pParameter: oaep_p as *mut pkcs11::types::CK_VOID,
+        // FIXME: This should be something like "oaep.len()", but oaep is of
+        // type CK_RSA_PKCS_OAEP_PARAMS. Do we want the size of the struct
+        // here?  (Alternatively, do we want the size of pSourceData, i.e.
+        // ulSourceDataLen, or something else?)
+        ulParameterLen: 0,
+    };
+    let _ = p11ctx.decrypt_init(session, &mech, p11_priv_key)?;
+
+    let plaintext = p11ctx.decrypt(session, &ciphertext)?;
+
+    Ok(plaintext)
+}
+
+
+// Decrypt tries to decrypt one of the recipients' blobs using a pkcs11 private key.
+// The input pkcs11blobstr is a string with the following format:
+// {
+//   recipients: [  // recipient list
+//     {
+//        "version": 0,
+//        "blob": <base64 encoded RSA OAEP encrypted blob>,
+//        "hash": <hash used for OAEP other than 'sha256'>
+//     } ,
+//     {
+//        "version": 0,
+//        "blob": <base64 encoded RSA OAEP encrypted blob>,
+//        "hash": <hash used for OAEP other than 'sha256'>
+//     } ,
+//     [...]
+// }
+//func Decrypt(privKeyObjs []*Pkcs11KeyFileObject, pkcs11blobstr []byte) ([]byte, error) {
+pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
+                      pkcs11blobstr: &Vec<u8>)
+                      -> Result<Vec<u8>, OrsError> {
+
+    let pkcs11_blob: Pkcs11Blob = serde_json::from_slice(pkcs11blobstr)?;
+    if pkcs11_blob.version != 0 {
+        return Err(OrsError::TODOGeneral);
+    }
+    // since we do trial and error, collect all encountered errors
+    let mut errs = String::from("");
+
+    for recipient in pkcs11_blob.recipients {
+        if recipient.version != 0 {
+            return Err(OrsError::TODOGeneral);
+        }
+
+        //ciphertext, err := base64.StdEncoding.DecodeString(recipient.Blob)
+        let ciphertext = match base64::decode(recipient.blob) {
+            Ok(c) => {
+                if c.len() == 0 {
+                    // FIXME append error message of e
+                    //"Base64 decoding failed: %s\n", err
+                    errs += "1";
+                    continue;
+                }
+            }
+            Err(e) => {
+                // FIXME append error message of e
+                //"Base64 decoding failed: %s\n", err
+                errs += "1";
+                continue;
+            },
+        };
+        // try all keys until one works
+        for priv_key in priv_keys {
+            let plaintext = private_decrypt_oaep(priv_key, ciphertext, recipient.hash);
+            match plaintext {
+                Ok(x) => return x,
+                Err(e) => {
+                    // TODO
+                    //if uri, err2 := privKeyObj.Uri.Format(); err2 == nil {
+                    //    errs += fmt.Sprintf("%s : %s\n", uri, err)
+                    //} else {
+                    //    errs += fmt.Sprintf("%s\n", err)
+                    //}
+                }
+            }
+        }
+    }
+
+    // TODO use errs string
+    //return nil, errors.Errorf("Could not find a pkcs11 key for decryption:\n%s", errs)
+    Err(OrsError::TODOGeneral)
+}
+

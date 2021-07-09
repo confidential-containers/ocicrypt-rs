@@ -4,7 +4,7 @@ use crate::config::DecryptConfig;
 use std::io;
 use std::collections::HashMap;
 use pkcs11_uri::{Pkcs11Uri};
-use crate::utils::{parse_pkcs11_key_file, encrypt_multiple};
+use crate::utils::{parse_pkcs11_key_file, encrypt_multiple, decrypt_pkcs11};
 use crate::ors_error::OrsError;
 
 struct Pkcs11 {
@@ -67,8 +67,28 @@ impl KeyWrapper for Pkcs11 {
                   dc: &DecryptConfig,
                   annotation: &Vec<u8>)
                   -> Result<Vec<u8>, OrsError> {
-        // TODO
-        Ok(b"".to_vec())
+
+        let mut pkcs11_keys = Vec::new();
+
+        let priv_keys = self.get_private_keys(&dc.param);
+        if priv_keys.len() == 0 {
+            return Err(OrsError::TODOGeneral);
+        }
+
+        let p11_conf = p11_conf_from_params(&dc.param)?;
+
+        for k in priv_keys {
+
+            let key: Pkcs11KeyFileObject = parse_pkcs11_key_file(k)?;
+            // FIXME: Do we need more fields for the key here?
+            //key.uri.SetModuleDirectories(p11conf.ModuleDirectories)
+            //key.uri.SetAllowedModulePaths(p11conf.AllowedModulePaths)
+            pkcs11_keys.push(key);
+        }
+
+        let plaintext = decrypt_pkcs11(&pkcs11_keys, annotation)?;
+
+        Ok(plaintext)
     }
 
 
