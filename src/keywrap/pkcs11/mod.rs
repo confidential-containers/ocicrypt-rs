@@ -43,7 +43,7 @@ impl KeyWrapper for Pkcs11 {
         for p in ps {
             x.push(p.to_vec());
         }
-        for y in &ec.param["pkcs11-yamsl"] {
+        for y in &ec.param["pkcs11-yamls"] {
             x.push(y.to_vec());
         }
         let dc = match ec.decrypt_config.as_ref() {
