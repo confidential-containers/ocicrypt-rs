@@ -64,11 +64,10 @@ pub fn parse_pkcs11_key_file(yaml_bytes: &Vec<u8>)
 
     let p11_uri = parse_pkcs11_uri(&p11_key_file.uri)?;
 
-    let kfo = Pkcs11KeyFileObject {
+    Ok(Pkcs11KeyFileObject {
         uri: p11_uri,
         env: p11_key_file.env,
-    };
-    Ok(kfo)
+    })
 }
 
 
