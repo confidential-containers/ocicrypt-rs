@@ -119,9 +119,7 @@ impl KeyWrapper for Pkcs11 {
     fn get_recipients(&self,
                       _packet: String)
                       -> Result<Vec<String>, std::io::Error> {
-        let mut v = Vec::new();
-        v.push("[pkcs11]".to_string());
-        Ok(v)
+        Ok(vec!["[pkcs11]".to_string()])
     }
 }
 
