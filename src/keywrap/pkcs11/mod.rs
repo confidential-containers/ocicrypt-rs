@@ -144,7 +144,7 @@ fn add_pub_keys(dc: &DecryptConfig,
                 pub_keys: &Vec<Vec<u8>>)
                 -> Result<Vec<Pkcs11KeyFileObject>, OrsError> {
     let mut pkcs11_keys = Vec::new();
-    if pub_keys.len() == 0 {
+    if pub_keys.is_empty() {
         return Ok(pkcs11_keys);
     }
 
