@@ -1,7 +1,6 @@
 use crate::keywrap::KeyWrapper;
 use crate::config::EncryptConfig;
 use crate::config::DecryptConfig;
-use std::io;
 use std::collections::HashMap;
 use pkcs11_uri::{Pkcs11Uri};
 use crate::utils::{parse_pkcs11_key_file, encrypt_multiple, decrypt_pkcs11};

@@ -255,7 +255,7 @@ fn pkcs11_uri_login(p11uri: &Pkcs11Uri,
                 //let ti = p11ctx.get_token_info(slot)?;
                 let ti = match p11ctx.get_token_info(slot) {
                     Ok(o) => o,
-                    Err(e) => return Err(OrsError::TODOGeneral),
+                    Err(_) => return Err(OrsError::TODOGeneral),
                 };
                 if &String::from(ti.label) != tokenlabel {
                     continue;
@@ -431,7 +431,7 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
 
     let oaephash = match std::env::var("OCICRYPT_OAEP_HASHALG") {
         Ok(x) => x,
-        Err(x) => return Err(OrsError::TODOGeneral),
+        Err(_) => return Err(OrsError::TODOGeneral),
     };
 
     let oaep_hashalg = get_oaep_hashalg(oaephash)?;
@@ -598,7 +598,7 @@ pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
                 }
                 c
             }
-            Err(e) => {
+            Err(_) => {
                 // FIXME append error message of e
                 //"Base64 decoding failed: %s\n", err
                 errs += "1";
@@ -610,7 +610,7 @@ pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
             let plaintext = private_decrypt_oaep(priv_key, &ciphertext, &recipient.hash);
             match plaintext {
                 Ok(x) => return Ok(x),
-                Err(e) => {
+                Err(_) => {
                     // TODO
                     //if uri, err2 := privKeyObj.Uri.Format(); err2 == nil {
                     //    errs += fmt.Sprintf("%s : %s\n", uri, err)
