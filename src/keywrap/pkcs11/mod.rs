@@ -107,14 +107,6 @@ impl KeyWrapper for Pkcs11KeyWrapper {
         dcparameters.get("pkcs11-yamls").cloned()
     }
 
-    fn key_ids_from_packet(&self,
-                           _: String)
-                           -> Result<Vec<u64>, std::io::Error> {
-        // FIXME return nil, nil
-        Ok(Vec::new())
-    }
-
-
     fn recipients(&self,
                   _packet: String)
                   -> Result<Vec<String>, std::io::Error> {
@@ -172,6 +164,20 @@ mod kw_tests {
         let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
         assert_eq!(pkcs11_key_wrapper.annotation_id(),
                    "org.opencontainers.image.enc.keys.pkcs11");
+    }
+
+    #[test]
+    fn test_private_keys() {
+        let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
+        let mut dc = DecryptConfig::default();
+        assert!(pkcs11_key_wrapper.private_keys(&dc.param).is_none());
+        // TODO: test positive case (is_some)
+    }
+
+    #[test]
+    fn test_key_ids_from_packet() {
+        let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
+        assert!(pkcs11_key_wrapper.key_ids_from_packet("".to_string()) == None);
     }
 
     #[test]

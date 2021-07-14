@@ -28,7 +28,9 @@ trait KeyWrapper {
 
     fn key_ids_from_packet(&self,
                            packet: String)
-                           -> Result<Vec<u64>, std::io::Error>;
+                           -> Option<Vec<u64>> {
+        None
+    }
 
     fn recipients(&self,
                   packet: String)
