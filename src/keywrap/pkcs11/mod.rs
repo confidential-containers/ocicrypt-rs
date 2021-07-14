@@ -168,6 +168,13 @@ mod kw_tests {
     use super::*;
 
     #[test]
+    fn test_annotation_id() {
+        let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
+        assert_eq!(pkcs11_key_wrapper.annotation_id(),
+                   "org.opencontainers.image.enc.keys.pkcs11");
+    }
+
+    #[test]
     fn test_no_possible_keys() {
         let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
         let mut dc = DecryptConfig::default();
