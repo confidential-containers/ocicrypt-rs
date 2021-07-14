@@ -167,6 +167,13 @@ mod kw_tests {
     }
 
     #[test]
+    fn test_no_possible_keys() {
+        let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
+        let mut dc = DecryptConfig::default();
+        assert!(pkcs11_key_wrapper.no_possible_keys(&dc.param));
+    }
+
+    #[test]
     fn test_private_keys() {
         let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
         let mut dc = DecryptConfig::default();
@@ -178,13 +185,6 @@ mod kw_tests {
     fn test_key_ids_from_packet() {
         let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
         assert!(pkcs11_key_wrapper.key_ids_from_packet("".to_string()) == None);
-    }
-
-    #[test]
-    fn test_no_possible_keys() {
-        let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
-        let mut dc = DecryptConfig::default();
-        assert!(pkcs11_key_wrapper.no_possible_keys(&dc.param));
     }
 
     #[test]
