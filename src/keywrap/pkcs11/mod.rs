@@ -174,4 +174,11 @@ mod kw_tests {
         assert!(pkcs11_key_wrapper.no_possible_keys(&dc.param));
     }
 
+    #[test]
+    fn test_recipients() {
+        let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
+        let recipients = pkcs11_key_wrapper.recipients("".to_string()).unwrap();
+        assert!(recipients.len() == 1);
+        assert!(recipients[0] == "[pkcs11]");
+    }
 }
