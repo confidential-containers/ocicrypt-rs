@@ -6,8 +6,8 @@ use pkcs11_uri::{Pkcs11Uri};
 use crate::utils::{parse_pkcs11_key_file, encrypt_multiple, decrypt_pkcs11};
 use crate::ors_error::OrsError;
 
-struct Pkcs11 {
-}
+#[derive(Debug)]
+pub struct Pkcs11KeyWrapper {}
 
 // Pkcs11KeyFileObject is a representation of the Pkcs11KeyFile with the pkcs11
 // URI as an object
@@ -29,7 +29,7 @@ struct Pkcs11Config {
     allowed_module_paths: Vec<String>,
 }
 
-impl KeyWrapper for Pkcs11 {
+impl KeyWrapper for Pkcs11KeyWrapper {
     
     // wrap_keys wraps the session key for recpients and encrypts the opts_data,
     // which describe the symmetric key used for encrypting the layer
@@ -165,11 +165,12 @@ fn add_pub_keys(dc: &DecryptConfig,
 
 #[cfg(test)]
 mod kw_tests {
-    //use super::*;
+    use super::*;
 
     #[test]
     fn test_wrap_keys() {
         // TODO
         assert_eq!(0, 0);
     }
+
 }
