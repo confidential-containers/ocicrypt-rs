@@ -126,7 +126,7 @@ fn has_pin(p11uri: &Pkcs11Uri) -> bool {
 // GetPIN gets the PIN from either the pin-value or pin-source attribute; a user may want to call HasPIN()
 // before calling this function to determine whether a PIN has been provided at all so that an error code
 // returned by this function indicates that the PIN value could not be retrieved.
-fn get_pin(p11uri: &Pkcs11Uri) -> Result<String, OrsError> {
+fn pin(p11uri: &Pkcs11Uri) -> Result<String, OrsError> {
     match &p11uri.query_attributes.pin_value {
         Some(x) => return Ok(x.to_string()),
         None => {},
@@ -157,7 +157,7 @@ fn get_pin(p11uri: &Pkcs11Uri) -> Result<String, OrsError> {
     Ok("".to_string())
 }
 
-fn get_module(p11uri: &Pkcs11Uri) -> Result<&String, OrsError> {
+fn module(p11uri: &Pkcs11Uri) -> Result<&String, OrsError> {
     // FIXME this is not correct. see golang pkcs11-uri. need to search
     // directories
     match p11uri.query_attributes.module_name.as_ref() {
@@ -181,9 +181,9 @@ fn pkcs11_uri_get_login_parameters(p11uri: &Pkcs11Uri,
         }
     }
     // some devices require a PIN to find a *public* key object, others don't
-    let pin = get_pin(p11uri)?;
+    let pin = pin(p11uri)?;
 
-    let module_name = get_module(p11uri)?;
+    let module_name = module(p11uri)?;
 
     //let slotid = match p11uri.path_attributes.slot_id {
         //Some(x) => x,
@@ -323,11 +323,11 @@ fn find_object(p11ctx: &pkcs11::Ctx,
     Ok(0)
 }
 
-fn get_oaep_hashalg(oaephash: String)
-                    -> Result<(pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS, String), OrsError> {
+fn oaep_hashalg(oaephash: String)
+                -> Result<(pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS, String), OrsError> {
     // TODO can we move initialize these Params variables once?
     // Thread safety issue in rust when naively trying to make it static-global
-    // See also get_oaep()
+    // See also oaep()
 
     // OAEPLabel defines the label we use for OAEP encryption; this cannot be changed
     // TODO
@@ -366,10 +366,10 @@ fn get_oaep_hashalg(oaephash: String)
     };
     Ok(tmp)
 }
-fn get_oaep(hashalg: &String) -> Result<pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS,
-                                       OrsError> {
+fn oaep(hashalg: &String) -> Result<pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS,
+                                    OrsError> {
 
-    // TODO: See get_oaep_hashalg
+    // TODO: See oaep_hashalg
     let OAEPLabel: *mut pkcs11::types::CK_VOID = std::ptr::null_mut();
     let label_len: pkcs11::types::CK_ULONG = 0;
 
@@ -434,7 +434,7 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
         Err(_) => return Err(OrsError::TODOGeneral),
     };
 
-    let oaep_hashalg = get_oaep_hashalg(oaephash)?;
+    let oaep_hashalg = oaep_hashalg(oaephash)?;
 
     let mut oaep = oaep_hashalg.0;
     let hashalg = oaep_hashalg.1;
@@ -532,7 +532,7 @@ fn private_decrypt_oaep(priv_key: &Pkcs11KeyFileObject,
                                   object_id,
                                   object_label)?;
 
-    let mut oaep = get_oaep(hashalg)?;
+    let mut oaep = oaep(hashalg)?;
 
     // FIXME: boilerplate similar to encrypt_init
     let oaep_p: *mut pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS = &mut oaep;

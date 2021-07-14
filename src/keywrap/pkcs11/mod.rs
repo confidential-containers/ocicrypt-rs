@@ -69,7 +69,7 @@ impl KeyWrapper for Pkcs11 {
 
         let mut pkcs11_keys = Vec::new();
 
-        let priv_keys = self.get_private_keys(&dc.param);
+        let priv_keys = self.private_keys(&dc.param);
         if priv_keys.is_empty() {
             return Err(OrsError::TODOGeneral);
         }
@@ -91,33 +91,33 @@ impl KeyWrapper for Pkcs11 {
     }
 
 
-    fn get_annotation_id(&self) -> &str {
+    fn annotation_id(&self) -> &str {
         "org.opencontainers.image.enc.keys.pkcs11"
     }
 
     fn no_possible_keys(&self,
                         dcparameters: &HashMap<String, Vec<Vec<u8>>>)
                         -> bool {
-        self.get_private_keys(dcparameters).is_empty()
+        self.private_keys(dcparameters).is_empty()
     }
 
-    fn get_private_keys<'a>(&self,
-                            dcparameters: &'a HashMap<String, Vec<Vec<u8>>>)
-                            -> &'a Vec<Vec<u8>> {
+    fn private_keys<'a>(&self,
+                        dcparameters: &'a HashMap<String, Vec<Vec<u8>>>)
+                        -> &'a Vec<Vec<u8>> {
         &dcparameters["pkcs11-yamls"]
     }
 
-    fn get_key_ids_from_packet(&self,
-                               _: String)
-                               -> Result<Vec<u64>, std::io::Error> {
+    fn key_ids_from_packet(&self,
+                           _: String)
+                           -> Result<Vec<u64>, std::io::Error> {
         // FIXME return nil, nil
         Ok(Vec::new())
     }
 
 
-    fn get_recipients(&self,
-                      _packet: String)
-                      -> Result<Vec<String>, std::io::Error> {
+    fn recipients(&self,
+                  _packet: String)
+                  -> Result<Vec<String>, std::io::Error> {
         Ok(vec!["[pkcs11]".to_string()])
     }
 }
