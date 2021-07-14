@@ -22,9 +22,9 @@ trait KeyWrapper {
                         dcparameters: &HashMap<String, Vec<Vec<u8>>>)
                         -> bool;
 
-    fn private_keys<'a>(&'a self,
-                        dcparameters: &'a HashMap<String, Vec<Vec<u8>>>)
-                        -> &'a Vec<Vec<u8>>;
+    fn private_keys(&self,
+                    dcparameters: &HashMap<String, Vec<Vec<u8>>>)
+                    -> Option<Vec<Vec<u8>>>;
 
     fn key_ids_from_packet(&self,
                            packet: String)

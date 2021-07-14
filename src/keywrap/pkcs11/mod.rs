@@ -69,16 +69,16 @@ impl KeyWrapper for Pkcs11KeyWrapper {
 
         let mut pkcs11_keys = Vec::new();
 
-        let priv_keys = self.private_keys(&dc.param);
-        if priv_keys.is_empty() {
-            return Err(OrsError::TODOGeneral);
-        }
+        let priv_keys = match self.private_keys(&dc.param) {
+            Some(x) => x,
+            None => return Err(OrsError::TODOGeneral),
+        };
 
         let p11_conf = p11_conf_from_params(&dc.param)?;
 
         for k in priv_keys {
 
-            let key: Pkcs11KeyFileObject = parse_pkcs11_key_file(k)?;
+            let key: Pkcs11KeyFileObject = parse_pkcs11_key_file(&k)?;
             // FIXME: Do we need more fields for the key here?
             //key.uri.SetModuleDirectories(p11conf.ModuleDirectories)
             //key.uri.SetAllowedModulePaths(p11conf.AllowedModulePaths)
@@ -98,13 +98,13 @@ impl KeyWrapper for Pkcs11KeyWrapper {
     fn no_possible_keys(&self,
                         dcparameters: &HashMap<String, Vec<Vec<u8>>>)
                         -> bool {
-        self.private_keys(dcparameters).is_empty()
+        self.private_keys(dcparameters).is_none()
     }
 
-    fn private_keys<'a>(&self,
-                        dcparameters: &'a HashMap<String, Vec<Vec<u8>>>)
-                        -> &'a Vec<Vec<u8>> {
-        &dcparameters["pkcs11-yamls"]
+    fn private_keys(&self,
+                    dcparameters: &HashMap<String, Vec<Vec<u8>>>)
+                    -> Option<Vec<Vec<u8>>> {
+        dcparameters.get("pkcs11-yamls").cloned()
     }
 
     fn key_ids_from_packet(&self,
@@ -168,9 +168,10 @@ mod kw_tests {
     use super::*;
 
     #[test]
-    fn test_wrap_keys() {
-        // TODO
-        assert_eq!(0, 0);
+    fn test_no_possible_keys() {
+        let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
+        let mut dc = DecryptConfig::default();
+        assert!(pkcs11_key_wrapper.no_possible_keys(&dc.param));
     }
 
 }
