@@ -8,8 +8,13 @@ license = "Apache-2.0"
 authors = ["The ocicrypt Authors"]
 edition = "2018"
 
+[features]
+default = ["keywrap-jwe"]
+keywrap-jwe = []
+
 [dependencies]
 anyhow = ">=1.0"
+josekit = ">=0.7"
 pkcs11 = ">=0.5.0"
 pkcs11-uri = ">=0.1.2"
 serde_yaml = ">=0.8.7"
