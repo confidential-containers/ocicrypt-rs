@@ -5,7 +5,6 @@ use crate::config::DecryptConfig;
 use std::collections::HashMap;
 use pkcs11_uri::{Pkcs11Uri};
 use crate::utils::{parse_pkcs11_key_file, encrypt_multiple, decrypt_pkcs11};
-use crate::ors_error::OrsError;
 
 #[derive(Debug)]
 pub struct Pkcs11KeyWrapper {}
@@ -117,7 +116,7 @@ impl KeyWrapper for Pkcs11KeyWrapper {
 
 
 fn p11_conf_from_params(dcparameters: &HashMap<String, Vec<Vec<u8>>>)
-                        -> Result<Pkcs11Config, OrsError> {
+                        -> Result<Pkcs11Config> {
     // FIXME: c is just a placeholder for now
     let c = Pkcs11Config{
         module_directories: Vec::default(),
@@ -134,7 +133,7 @@ fn p11_conf_from_params(dcparameters: &HashMap<String, Vec<Vec<u8>>>)
 
 fn add_pub_keys(dc: &DecryptConfig,
                 pub_keys: &Vec<Vec<u8>>)
-                -> Result<Vec<Pkcs11KeyFileObject>, OrsError> {
+                -> Result<Vec<Pkcs11KeyFileObject>> {
     let mut pkcs11_keys = Vec::new();
     if pub_keys.is_empty() {
         return Ok(pkcs11_keys);
