@@ -407,7 +407,7 @@ fn oaep(hashalg: &String) -> Result<pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS,
 // publicEncryptOAEP uses a public key described by a pkcs11 URI to OAEP
 // encrypt the given plaintext
 fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
-                       plaintext: &Vec<u8>)
+                       plaintext: &[u8])
                        -> Result<(Vec<u8>, String), OrsError> {
     // TODO
     // defer restoreEnv(oldenv)
@@ -480,7 +480,7 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
 //   ]
 // }
 pub fn encrypt_multiple(pub_keys: &Vec<Pkcs11KeyFileObject>,
-                       data: &Vec<u8>)
+                       data: &[u8])
                        -> Result<Vec<u8>, OrsError> {
 
     let mut pkcs11_blob: Pkcs11Blob = Pkcs11Blob{
@@ -572,7 +572,7 @@ fn private_decrypt_oaep(priv_key: &Pkcs11KeyFileObject,
 // }
 //func Decrypt(privKeyObjs []*Pkcs11KeyFileObject, pkcs11blobstr []byte) ([]byte, error) {
 pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
-                      pkcs11blobstr: &Vec<u8>)
+                      pkcs11blobstr: &[u8])
                       -> Result<Vec<u8>, OrsError> {
 
     let pkcs11_blob: Pkcs11Blob = serde_json::from_slice(pkcs11blobstr)?;

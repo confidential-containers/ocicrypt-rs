@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use crate::keywrap::KeyWrapper;
 use crate::config::EncryptConfig;
 use crate::config::DecryptConfig;
@@ -35,8 +36,8 @@ impl KeyWrapper for Pkcs11KeyWrapper {
     // which describe the symmetric key used for encrypting the layer
     fn wrap_keys(&self,
                  ec: &EncryptConfig,
-                 opts_data: &Vec<u8>)
-                 -> Result<Vec<u8>, OrsError> {
+                 opts_data: &[u8])
+                 -> Result<Vec<u8>> {
         let mut x: Vec<Vec<u8>> = Vec::new();
         let ps: &Vec<Vec<u8>> = &ec.param["pkcs11-pubkeys"];
         for p in ps {
@@ -47,7 +48,7 @@ impl KeyWrapper for Pkcs11KeyWrapper {
         }
         let dc = match ec.decrypt_config.as_ref() {
             Some(x) => x,
-            None => return Err(OrsError::TODOGeneral),
+            None => return Err(anyhow!("")),
         };
 
         let pkcs11_recipients: Vec<Pkcs11KeyFileObject>
@@ -62,16 +63,16 @@ impl KeyWrapper for Pkcs11KeyWrapper {
         Ok(json_str)
     }
 
-    fn unwrap_key(&self,
-                  dc: &DecryptConfig,
-                  annotation: &Vec<u8>)
-                  -> Result<Vec<u8>, OrsError> {
+    fn unwrap_keys(&self,
+                   dc: &DecryptConfig,
+                   annotation: &[u8])
+                   -> Result<Vec<u8>> {
 
         let mut pkcs11_keys = Vec::new();
 
         let priv_keys = match self.private_keys(&dc.param) {
             Some(x) => x,
-            None => return Err(OrsError::TODOGeneral),
+            None => return Err(anyhow!("")),
         };
 
         let p11_conf = p11_conf_from_params(&dc.param)?;
@@ -109,8 +110,8 @@ impl KeyWrapper for Pkcs11KeyWrapper {
 
     fn recipients(&self,
                   _packet: String)
-                  -> Result<Vec<String>, std::io::Error> {
-        Ok(vec!["[pkcs11]".to_string()])
+                  -> Option<Vec<String>> {
+        Some(vec!["[pkcs11]".to_string()])
     }
 }
 
@@ -184,7 +185,7 @@ mod kw_tests {
     #[test]
     fn test_key_ids_from_packet() {
         let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
-        assert!(pkcs11_key_wrapper.key_ids_from_packet("".to_string()) == None);
+        assert!(pkcs11_key_wrapper.keyids_from_packet("".to_string()) == None);
     }
 
     #[test]

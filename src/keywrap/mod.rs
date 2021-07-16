@@ -10,10 +10,6 @@ use std::collections::HashMap;
 pub mod jwe;
 
 pub mod pkcs11;
-use crate::config::EncryptConfig;
-use crate::config::DecryptConfig;
-use std::collections::HashMap;
-use crate::ors_error::OrsError;
 
 /// KeyWrapper is the interface used for wrapping keys using
 /// a specific encryption technology (pgp, jwe, pkcs7, pkcs11, keyprovider)
