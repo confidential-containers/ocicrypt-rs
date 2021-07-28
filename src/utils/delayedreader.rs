@@ -9,3 +9,12 @@ fn min(a: usize, b: usize) -> usize {
 
     return b;
 }
+
+struct DelayedReader {
+    reader: Box<dyn Read>,
+    err : Option<ErrorKind>,
+    buffer : Vec<u8>,
+    bufbytes : usize,
+    bufoff : usize,
+    is_eof : bool,
+}
