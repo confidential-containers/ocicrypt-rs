@@ -18,3 +18,14 @@ struct DelayedReader {
     bufoff : usize,
     is_eof : bool,
 }
+
+pub fn new_delayed_reader(reader: Box<dyn Read>, buffer_size: usize) -> impl Read {
+    DelayedReader {
+        reader: reader,
+        buffer: vec![0; buffer_size],
+        err: None,
+        bufbytes: 0,
+        bufoff: 0,
+        is_eof: false,
+    }
+}
