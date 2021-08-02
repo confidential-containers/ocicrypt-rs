@@ -221,7 +221,6 @@ mod tests {
             .decrypt_with_pkcs11(pkcs11_config.clone(), pkcs11_yaml.clone())
             .is_ok());
         assert!(dc.decrypt_with_key_provider(key_providers).is_ok());
-        println!("final decrypt config is: {:?}", dc);
     }
 
     #[test]
@@ -263,7 +262,6 @@ mod tests {
         assert_eq!(vec![b"abc".to_vec()], ec.param["key_p2"]);
         assert_eq!(vec![b"abc:abc".to_vec()], ec.param["key_p3"]);
 
-        println!("final encrypt config is: {:?}", ec);
     }
 
     #[test]
@@ -279,4 +277,170 @@ mod tests {
         assert!(cc.encrypt_config.is_some());
         assert!(cc.decrypt_config.is_some());
     }
+}
+
+
+// Pkcs11Config describes the layout of a pkcs11 config file
+// The file has the following yaml format:
+// module_directories:
+// - /usr/lib64/pkcs11/
+// allowed_module_paths
+// - /usr/lib64/pkcs11/libsofthsm2.so
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct Pkcs11Config {
+    pub module_directories: Vec<String>,
+    pub allowed_module_paths: Vec<String>,
+}
+
+const CONFIGFILE: &str = "ocicrypt.conf";
+const ENVVARNAME: &str = "OCICRYPT_CONFIG";
+const XDGCONFIGHOME: &str = "XDG_CONFIG_HOME";
+const HOME: &str = "HOME";
+
+impl Pkcs11Config {
+
+    fn get_configuration(&self) -> Result<Pkcs11Config> {
+        match std::env::var(ENVVARNAME) {
+            Ok(filename) => {
+                if filename == "internal" {
+                    // TODO
+                    //return getDefaultCryptoConfigOpts()
+                }
+                if std::path::Path::new(&filename).exists() {
+                    return parse_config_file(filename);
+                }
+                // fall out of match
+            },
+            Err(e) => match e {
+                std::env::VarError::NotPresent => (), // fall out of match
+                std::env::VarError::NotUnicode(s) => return Err(anyhow!("")),
+            },
+        };
+
+        match std::env::var(XDGCONFIGHOME) {
+            Ok(envvar) => {
+                let mut p = std::path::PathBuf::from(envvar);
+                p.push(CONFIGFILE);
+                if std::path::Path::new(&p).exists() {
+                    return parse_config_file(p.to_str().unwrap().to_string());
+                }
+                // fall out of match
+            },
+            Err(e) => match e {
+                std::env::VarError::NotPresent => (), // fall out of match
+                std::env::VarError::NotUnicode(s) => return Err(anyhow!("")),
+            },
+        };
+
+        match std::env::var(HOME) {
+            Ok(envvar) => {
+                let mut p = std::path::PathBuf::from(envvar);
+                p.push(".config");
+                p.push(CONFIGFILE);
+                if std::path::Path::new(&p).exists() {
+                    return parse_config_file(p.to_str().unwrap().to_string());
+                }
+                // fall out of match
+            },
+            Err(e) => match e {
+                std::env::VarError::NotPresent => (), // fall out of match
+                std::env::VarError::NotUnicode(s) => return Err(anyhow!("")),
+            },
+        }
+
+        let mut p = std::path::PathBuf::from("/etc");
+        p.push(CONFIGFILE);
+        if std::path::Path::new(&p).exists() {
+            return parse_config_file(p.to_str().unwrap().to_string());
+        }
+        Err(anyhow!(""))
+    }
+
+    fn get_default_crypto_config_opts(&self) -> Result<Pkcs11Config> {
+
+        let mdyaml = get_default_module_directories_yaml("".to_string())?;
+
+        let config = format!("module-directories:\n\
+                              {} \
+                              allowed-module-paths:\n\
+                              {}", mdyaml, mdyaml);
+        parse_pkcs11_config_file(config.as_bytes())
+    }
+
+    fn get_user_pkcs11_config(&self) -> Result<Pkcs11Config> {
+        let empty_config = Pkcs11Config{
+            module_directories: vec![],
+            allowed_module_paths: vec![],
+        };
+        let c = self.get_configuration()?;
+        // TODO ? can we ever get an empty pkcs11config from get-configuration?
+        // see go version's error handling here...
+        Ok(c)
+    }
+
+}
+
+fn parse_config_file(filename: String) -> Result<Pkcs11Config> {
+    let data = std::fs::read_to_string(filename)?;
+    let config: Pkcs11Config = serde_yaml::from_str(&data)?;
+    Ok(config)
+}
+
+// Parse a pkcs11 config file that influences the module search behavior as
+// well as the set of modules that users are allowed to use
+pub fn parse_pkcs11_config_file(yamlstr: &[u8]) -> Result<Pkcs11Config> {
+    let p11conf: Pkcs11Config = serde_yaml::from_slice(yamlstr)?;
+    Ok(p11conf)
+}
+
+// GetDefaultModuleDirectories returns module directories covering
+// a variety of Linux distros
+fn get_default_module_directories() -> Result<Vec<String>> {
+    let mut dirs = vec![
+        "/usr/lib64/pkcs11/".to_string(), // Fedora,RHEL,openSUSE
+        "/usr/lib/pkcs11/".to_string(),   // Fedora,ArchLinux
+        "/usr/local/lib/pkcs11/".to_string(),
+        "/usr/lib/softhsm/".to_string(), // Debian,Ubuntu
+    ];
+
+    // Debian directory: /usr/lib/(x86_64|aarch64|arm|powerpc64le|s390x)-linux-gnu/
+    let hoq = get_host_and_os_type()?;
+    let hosttype = hoq.0;
+    let ostype   = hoq.1;
+    let q        = hoq.2;
+    if hosttype.len() > 0 {
+        let dir = format!("/usr/lib/{}-{}-{}/", hosttype, ostype, q);
+        dirs.push(dir);
+    }
+    Ok(dirs)
+}
+pub fn get_default_module_directories_yaml(indent: String) -> Result<String> {
+    let mut res = "".to_string();
+    for dir in get_default_module_directories()? {
+        res += &format!("{}- {}\n", indent, dir).to_string();
+    }
+    Ok(res)
+}
+
+fn get_host_and_os_type() -> Result<(String, String, String)> {
+    let mut ht = "";
+    let mut ot = "";
+    let mut st = "";
+    match std::env::consts::OS {
+        "linux" => {
+            ot = "linux";
+            st = "gnu";
+            match std::env::consts::ARCH {
+                "arm"     => ht = "arm",
+                "arm64"   => ht = "aarch64",
+                "amd64"   => ht = "x86_64",
+                "ppc64le" => ht = "powerpc64le",
+                "s390x"   => ht = "s390x",
+                _ => (),
+            }
+            //return Ok((ht.to_string(), ot.to_string(), st.to_string()));
+        },
+        _ => (),
+    }
+    Ok((ht.to_string(), ot.to_string(), st.to_string()))
 }
