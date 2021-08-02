@@ -1,57 +1,65 @@
 use anyhow::{anyhow, Result};
-use crate::keywrap::KeyWrapper;
-use crate::config::EncryptConfig;
-use crate::config::DecryptConfig;
 use std::collections::HashMap;
 use pkcs11_uri::{Pkcs11Uri};
-use crate::utils::{parse_pkcs11_key_file, encrypt_multiple, decrypt_pkcs11};
+use crate::keywrap::KeyWrapper;
+use crate::config::{CryptoConfig, EncryptConfig, DecryptConfig, Pkcs11Config,
+                    get_default_module_directories_yaml,
+                    parse_pkcs11_config_file};
+use crate::softhsm::{SoftHSMSetup};
+use crate::utils::{parse_public_key, parse_private_key,
+                   encrypt_multiple, decrypt_pkcs11, KeyType};
+use rsa::{RsaPublicKey};
+use crate::pkcs11_uri_wrapped::Pkcs11UriWrapped;
+
+
 
 #[derive(Debug)]
 pub struct Pkcs11KeyWrapper {}
 
+
+
 // Pkcs11KeyFileObject is a representation of the Pkcs11KeyFile with the pkcs11
-// URI as an object
+// URI wrapper as an object
 pub struct Pkcs11KeyFileObject {
-    pub uri: Pkcs11Uri,
-    // A map of environment variables needed by the pkcs11 module using this URI.
-    pub env: HashMap<String, String>,
+    pub uriw: Pkcs11UriWrapped,
 }
 
 
-// Pkcs11Config describes the layout of a pkcs11 config file
-// The file has the following yaml format:
-// module_directories:
-// - /usr/lib64/pkcs11/
-// allowed_module_paths
-// - /usr/lib64/pkcs11/libsofthsm2.so
-struct Pkcs11Config {
-    module_directories: Vec<String>,
-    allowed_module_paths: Vec<String>,
-}
+
 
 impl KeyWrapper for Pkcs11KeyWrapper {
     
-    // wrap_keys wraps the session key for recpients and encrypts the opts_data,
+    // Wrap the session key for recpients and encrypt the opts_data,
     // which describe the symmetric key used for encrypting the layer
     fn wrap_keys(&self,
                  ec: &EncryptConfig,
-                 opts_data: &[u8])
-                 -> Result<Vec<u8>> {
-        let mut x: Vec<Vec<u8>> = Vec::new();
-        let ps: &Vec<Vec<u8>> = &ec.param["pkcs11-pubkeys"];
-        for p in ps {
-            x.push(p.to_vec());
+                 opts_data: &[u8],
+    ) -> Result<Vec<u8>> {
+        let mut pubkeys: Vec<Vec<u8>> = Vec::new();
+        match ec.param.get("pkcs11-pubkeys") {
+            Some(pks) => {
+                for p in pks {
+                    pubkeys.push(p.to_vec());
+                }
+            },
+            None => (),
         }
-        for y in &ec.param["pkcs11-yamls"] {
-            x.push(y.to_vec());
-        }
+        match ec.param.get("pkcs11-yamls") {
+            Some(yamls) => {
+                for y in yamls {
+                    pubkeys.push(y.to_vec());
+                }
+            },
+            None => (),
+        };
         let dc = match ec.decrypt_config.as_ref() {
-            Some(x) => x,
-            None => return Err(anyhow!("")),
+            Some(pubkeys) => pubkeys,
+            None => return Err(anyhow!("EncryptConfig is missing
+                                        decrypt_config member")),
         };
 
-        let pkcs11_recipients: Vec<Pkcs11KeyFileObject>
-          = add_pub_keys(&dc, &x)?;
+        let pkcs11_recipients: Vec<KeyType>
+            = add_pub_keys(&dc, &pubkeys)?;
 
         if pkcs11_recipients.is_empty() {
             return Ok(Vec::new())
@@ -64,8 +72,8 @@ impl KeyWrapper for Pkcs11KeyWrapper {
 
     fn unwrap_keys(&self,
                    dc: &DecryptConfig,
-                   annotation: &[u8])
-                   -> Result<Vec<u8>> {
+                   annotation: &[u8],
+    ) -> Result<Vec<u8>> {
 
         let mut pkcs11_keys = Vec::new();
 
@@ -74,15 +82,22 @@ impl KeyWrapper for Pkcs11KeyWrapper {
             None => return Err(anyhow!("")),
         };
 
-        let p11_conf = p11_conf_from_params(&dc.param)?;
+        let p11conf_opt = p11conf_from_params(&dc.param)?;
 
-        for k in priv_keys {
+        for key in priv_keys {
 
-            let key: Pkcs11KeyFileObject = parse_pkcs11_key_file(&k)?;
-            // FIXME: Do we need more fields for the key here?
-            //key.uri.SetModuleDirectories(p11conf.ModuleDirectories)
-            //key.uri.SetAllowedModulePaths(p11conf.AllowedModulePaths)
-            pkcs11_keys.push(key);
+            let mut k = parse_private_key(&key, &vec![], "PKCS11".to_string())?;
+            match k {
+                KeyType::rpk(r) => {
+                },
+                KeyType::pkfo(mut p) => {
+                    if let Some(ref p11conf) = p11conf_opt {
+                        p.uriw.set_module_directories(&p11conf.module_directories);
+                        p.uriw.set_allowed_module_paths(&p11conf.allowed_module_paths);
+                        pkcs11_keys.push(p);
+                    }
+                },
+            }
         }
 
         let plaintext = decrypt_pkcs11(&pkcs11_keys, annotation)?;
@@ -96,57 +111,53 @@ impl KeyWrapper for Pkcs11KeyWrapper {
     }
 
     fn no_possible_keys(&self,
-                        dcparameters: &HashMap<String, Vec<Vec<u8>>>)
-                        -> bool {
+                        dcparameters: &HashMap<String, Vec<Vec<u8>>>
+    ) -> bool {
         self.private_keys(dcparameters).is_none()
     }
 
     fn private_keys(&self,
-                    dcparameters: &HashMap<String, Vec<Vec<u8>>>)
-                    -> Option<Vec<Vec<u8>>> {
+                    dcparameters: &HashMap<String, Vec<Vec<u8>>>,
+    ) -> Option<Vec<Vec<u8>>> {
         dcparameters.get("pkcs11-yamls").cloned()
     }
 
-    fn recipients(&self,
-                  _packet: String)
-                  -> Option<Vec<String>> {
+    fn recipients(&self, _packet: String) -> Option<Vec<String>> {
         Some(vec!["[pkcs11]".to_string()])
     }
 }
 
 
-fn p11_conf_from_params(dcparameters: &HashMap<String, Vec<Vec<u8>>>)
-                        -> Result<Pkcs11Config> {
-    // FIXME: c is just a placeholder for now
-    let c = Pkcs11Config{
-        module_directories: Vec::default(),
-        allowed_module_paths: Vec::default(),
-    };
+fn p11conf_from_params(dcparameters: &HashMap<String, Vec<Vec<u8>>>,
+) -> Result<Option<Pkcs11Config>> {
     if dcparameters.contains_key("pkcs11-config") {
-        // TODO
-        //return pkcs11.ParsePkcs11ConfigFile(dcparameters["pkcs11-config"][0])
-        return Ok(c);
+        return Ok(Some(parse_pkcs11_config_file(&dcparameters["pkcs11-config"][0])?))
     }
-    // FIXME was "nil, nil" in golang. Should probably be Option here
-    Ok(c)
+    Ok(None)
 }
 
 fn add_pub_keys(dc: &DecryptConfig,
-                pub_keys: &Vec<Vec<u8>>)
-                -> Result<Vec<Pkcs11KeyFileObject>> {
-    let mut pkcs11_keys = Vec::new();
-    if pub_keys.is_empty() {
+                pubkeys: &Vec<Vec<u8>>,
+) -> Result<Vec<KeyType>> {
+    let mut pkcs11_keys = Vec::<KeyType>::new();
+    if pubkeys.is_empty() {
         return Ok(pkcs11_keys);
     }
 
-    let p11_conf = p11_conf_from_params(&dc.param)?;
+    let p11conf_opt = p11conf_from_params(&dc.param)?;
 
-    for k in pub_keys {
-            let key: Pkcs11KeyFileObject = parse_pkcs11_key_file(k)?;
-            // FIXME: Do we need more fields for the key here?
-            //key.uri.SetModuleDirectories(p11conf.ModuleDirectories);
-            //key.uri.SetAllowedModulePaths(p11conf.AllowedModulePaths);
-            pkcs11_keys.push(key);
+    for pubkey in pubkeys {
+        let mut k = parse_public_key(pubkey, "PKCS11".to_string())?;
+        match &mut k {
+            KeyType::rpk(r) => {},
+            KeyType::pkfo(p) => {
+                if let Some(ref p11conf) = p11conf_opt {
+                    p.uriw.set_module_directories(&p11conf.module_directories);
+                    p.uriw.set_allowed_module_paths(&p11conf.allowed_module_paths);
+                }
+            },
+        }
+        pkcs11_keys.push(k);
     }
 
     Ok(pkcs11_keys)
@@ -159,6 +170,42 @@ fn add_pub_keys(dc: &DecryptConfig,
 mod kw_tests {
     use super::*;
 
+    //const SOFTHSM_SETUP: &str = "../../scripts/softhsm_setup";
+
+    #[test]
+    fn test_keywrap_pkcs11_success() {
+        let path_to_script = env!("CARGO_MANIFEST_DIR").to_string() + "/scripts/softhsm_setup";
+        let vs = create_valid_pkcs11_ccs().unwrap();
+        let valid_pkcs11_ccs = vs.0;
+        let shsm = vs.1;
+
+        // FIXME
+        //std::env::set_var("OCICRYPT_OAEP_HASHALG", "sha1");
+        std::env::set_var("OCICRYPT_OAEP_HASHALG", "sha256");
+
+        for cc in valid_pkcs11_ccs {
+            let kw = Pkcs11KeyWrapper{};
+
+            let data = "This is some secret text".as_bytes();
+
+            if let Some(ec) = cc.encrypt_config {
+                let wk = kw.wrap_keys(&ec, data).unwrap();
+                if let Some(dc) = cc.decrypt_config {
+                    let ud = kw.unwrap_keys(&dc, &wk).unwrap();
+                    assert_eq!(data, ud);
+                } else {
+                    assert!(false);
+                }
+            } else {
+                assert!(false);
+            }
+
+
+        }
+
+        shsm.run_softhsm_teardown(&path_to_script);
+    }
+
     #[test]
     fn test_annotation_id() {
         let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
@@ -169,14 +216,14 @@ mod kw_tests {
     #[test]
     fn test_no_possible_keys() {
         let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
-        let mut dc = DecryptConfig::default();
+        let dc = DecryptConfig::default();
         assert!(pkcs11_key_wrapper.no_possible_keys(&dc.param));
     }
 
     #[test]
     fn test_private_keys() {
         let pkcs11_key_wrapper = Pkcs11KeyWrapper{};
-        let mut dc = DecryptConfig::default();
+        let dc = DecryptConfig::default();
         assert!(pkcs11_key_wrapper.private_keys(&dc.param).is_none());
         // TODO: test positive case (is_some)
     }
@@ -193,5 +240,94 @@ mod kw_tests {
         let recipients = pkcs11_key_wrapper.recipients("".to_string()).unwrap();
         assert!(recipients.len() == 1);
         assert!(recipients[0] == "[pkcs11]");
+    }
+
+    fn load_data_path() -> String {
+        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("data");
+        path.to_str().unwrap().to_string()
+    }
+
+
+    fn get_pkcs11_config_yaml() -> Result<Vec<u8>> {
+        // we need to provide a configuration file so that on the various
+        // distros the libsofthsm2.so will be found by searching directories
+        let mdyaml = get_default_module_directories_yaml("".to_string())?;
+        let config = format!("module_directories:\n\
+                              {}\
+                              allowed_module_paths:\n\
+                              {}", mdyaml, mdyaml);
+        Ok(config.as_bytes().to_vec())
+    }
+
+
+    fn create_valid_pkcs11_ccs() -> Result<(Vec<CryptoConfig>, SoftHSMSetup)> {
+        let shsm = SoftHSMSetup::new()?;
+        // FIXME: This pathing is brittle. Should we be relative to this module
+        // file?  Should it be based off the project's root folder? What about
+        // after `make install`?
+        let path_to_script = env!("CARGO_MANIFEST_DIR").to_string() + "/scripts/softhsm_setup";
+        let pkcs11_pubkey_uri_str = shsm.run_softhsm_setup(&path_to_script)?;
+        let pubkey_pem = shsm.run_softhsm_get_pubkey(&path_to_script)?;
+        let pkcs11_privkey_yaml = format!(
+"pkcs11:
+  uri: {}
+module:
+  env:
+    SOFTHSM2_CONF: {}", pkcs11_pubkey_uri_str, shsm.get_config_filename()?);
+        let p11conf_yaml = get_pkcs11_config_yaml()?;
+
+        let mut k1_ec_p = HashMap::new();
+        k1_ec_p.insert("pkcs11-pubkeys".to_string(), vec![pubkey_pem.as_bytes().to_vec()]);
+        let mut k1_ec_dc_p = HashMap::new();
+        k1_ec_dc_p.insert("pkcs11-yamls".to_string(), vec![pkcs11_privkey_yaml.as_bytes().to_vec()]);
+        k1_ec_dc_p.insert("pkcs11-config".to_string(), vec![p11conf_yaml.to_vec()]);
+        let mut k1_dc_p = HashMap::new();
+        k1_dc_p.insert("pkcs11-yamls".to_string(), vec![pkcs11_privkey_yaml.as_bytes().to_vec()]);
+        k1_dc_p.insert("pkcs11-config".to_string(), vec![p11conf_yaml.to_vec()]);
+
+        let mut k2_ec_p = HashMap::new();
+        // public and private key YAMLs are identical
+        k2_ec_p.insert("pkcs11-yamls".to_string(), vec![pkcs11_privkey_yaml.as_bytes().to_vec()]);
+        let mut k2_ec_dc_p = HashMap::new();
+        k2_ec_dc_p.insert("pkcs11-yamls".to_string(), vec![pkcs11_privkey_yaml.as_bytes().to_vec()]);
+        k2_ec_dc_p.insert("pkcs11-config".to_string(), vec![p11conf_yaml.to_vec()]);
+        let mut k2_dc_p = HashMap::new();
+        k2_dc_p.insert("pkcs11-yamls".to_string(), vec![pkcs11_privkey_yaml.as_bytes().to_vec()]);
+        k2_dc_p.insert("pkcs11-config".to_string(), vec![p11conf_yaml.to_vec()]);
+
+        let valid_pkcs11_ccs: Vec<CryptoConfig> = vec![
+            // Key 1
+            CryptoConfig {
+                encrypt_config:
+                    Some(EncryptConfig{
+                        param: k1_ec_p,
+                        decrypt_config:
+                            Some(DecryptConfig{
+                                param: k1_ec_dc_p,
+                            }),
+                    }),
+                decrypt_config:
+                    Some(DecryptConfig{
+                        param: k1_dc_p,
+                    }),
+            },
+            // Key 2
+            CryptoConfig {
+                encrypt_config:
+                    Some(EncryptConfig{
+                        param: k2_ec_p,
+                        decrypt_config:
+                            Some(DecryptConfig{
+                                param: k2_ec_dc_p,
+                            }),
+                    }),
+                decrypt_config:
+                    Some(DecryptConfig{
+                        param: k2_dc_p,
+                    }),
+            },
+        ];
+        Ok((valid_pkcs11_ccs, shsm))
     }
 }
