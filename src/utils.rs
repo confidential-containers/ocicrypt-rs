@@ -3,6 +3,11 @@ use std::collections::HashMap;
 use pkcs11_uri::{Pkcs11Uri};
 use crate::keywrap::pkcs11::Pkcs11KeyFileObject;
 use http::Uri;
+use rsa::{PublicKey, RsaPublicKey, RsaPrivateKey, pkcs8::FromPublicKey,
+          PaddingScheme};
+use crate::pkcs11_uri_wrapped::Pkcs11UriWrapped;
+use rand::rngs::OsRng;
+use sha2::Sha256;
 
 
 extern crate serde_yaml;
@@ -13,36 +18,53 @@ extern crate base64;
 
 // OAEPDefaultHash defines the default hash used for OAEP encryption; this
 // cannot be changed
+// FIXME sha256?
 static OAEP_DEFAULT_HASH: &str = "sha1";
 
 
 
 
 // Pkcs11KeyFile describes the format of the pkcs11 (private) key file.
-// It also carries pkcs11 module related environment variables that are
+// It also carries pkcs11 module-related environment variables that are
 // transferred to the Pkcs11URI object and activated when the pkcs11 module is
 // used.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct Pkcs11KeyFile {
+    pkcs11: Pkcs11KeyFilePkcs11,
+    module: Pkcs11KeyFileModule,
+}
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct Pkcs11KeyFilePkcs11 {
     uri: String,
+}
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct Pkcs11KeyFileModule {
     env: HashMap<String, String>,
 }
 
 
-// Pkcs11Blob holds the encrypted blobs for all recipients; this is what we will put into the image's annotations
-#[derive(Serialize, Deserialize)]
-struct Pkcs11Blob {
-    version:    u32,              //`json:"version"`
-    recipients: Vec<Pkcs11Recipient>, // `json:"recipients"`
+// FIXME rename
+pub enum KeyType {
+    rpk(RsaPublicKey),
+    pkfo(Pkcs11KeyFileObject),
 }
 
-// Pkcs11Recipient holds the b64-encoded and encrypted blob for a particular
+
+// A Pkcs11Blob holds the encrypted blobs for all recipients.
+// This is what we will put into the image's annotations
+#[derive(Serialize, Deserialize)]
+struct Pkcs11Blob {
+    version:    u32,
+    recipients: Vec<Pkcs11Recipient>,
+}
+
+// A Pkcs11Recipient holds the b64-encoded and encrypted blob for a particular
 // recipient
 #[derive(Serialize, Deserialize)]
 struct Pkcs11Recipient {
-    version: u32, //`json:"version"`
-    blob:    String, // `json:"blob"`
-    hash:    String, // `json:"hash,omitempty"`
+    version: u32,
+    blob:    String,
+    hash:    String,
 }
 
 
@@ -52,31 +74,94 @@ pub fn parse_pkcs11_uri(uri: &str) -> Result<Pkcs11Uri> {
 }
 
 
-// ParsePkcs11KeyFile parses a pkcs11 key file holding a pkcs11 URI describing
-// a private key.
+// Parse a pkcs11 key file holding a pkcs11 URI describing a private key.
 // The file has the following yaml format:
 // pkcs11:
-//  - uri : <pkcs11 uri>                                                                  // An error is returned if the pkcs11 URI is malformed
-pub fn parse_pkcs11_key_file(yaml_bytes: &Vec<u8>)
-                             -> Result<Pkcs11KeyFileObject> {
-    let s = serde_yaml::to_string(yaml_bytes)?;
-    let p11_key_file: Pkcs11KeyFile = serde_yaml::from_str(&s)?;
+//  - uri : <pkcs11 uri>
+// An error is returned if the pkcs11 URI is malformed
+pub fn parse_pkcs11_key_file(yaml_bytes: &Vec<u8>,
+) -> Result<Pkcs11KeyFileObject> {
+    let p11_key_file: Pkcs11KeyFile = serde_yaml::from_slice(yaml_bytes)?;
+    let p11_uri = parse_pkcs11_uri(&p11_key_file.pkcs11.uri)?;
+    let mut p11uriw = Pkcs11UriWrapped::new(p11_uri)?;
+    p11uriw.set_env_map(p11_key_file.module.env);
+    Ok(Pkcs11KeyFileObject{uriw: p11uriw})
+}
 
-    let p11_uri = parse_pkcs11_uri(&p11_key_file.uri)?;
+// Parse the input byte array as a pkcs11 key file yaml
+fn parse_pkcs11_public_key_yaml(yaml: &Vec<u8>,
+                                _prefix: String,
+) -> Result<Pkcs11KeyFileObject> {
+    // if the URI does not have enough attributes, we will throw an error when
+    // decrypting
+    parse_pkcs11_key_file(yaml)
+}
 
-    Ok(Pkcs11KeyFileObject {
-        uri: p11_uri,
-        env: p11_key_file.env,
-    })
+// Parse the input byte array as pkcs11 key file (yaml format)
+fn parse_pkcs11_private_key_yaml(yaml: &Vec<u8>,
+                                 _prefix: String
+) -> Result<Pkcs11KeyFileObject> {
+    // if the URI does not have enough attributes, we will throw an error when
+    // decrypting
+    parse_pkcs11_key_file(yaml)
+}
+
+// Try to parse a public key in DER format first and PEM format after,
+// returning an error if the parsing failed
+pub fn parse_public_key(pubkey: &Vec<u8>,
+                        prefix: String,
+) -> Result<KeyType> {
+    // TODO: handle x509.ParsePKIXPublicKey(pubKey)
+    //              x509.ParsePKIXPublicKey(block.Bytes)
+    //              parseJWKPublicKey(pubKey, prefix)
+    let res: KeyType;
+    let a = RsaPublicKey::from_public_key_pem(&String::from_utf8_lossy(pubkey));
+    match a {
+        Ok(o) => {
+            res = KeyType::rpk(o);
+        },
+        Err(e) => {
+            let key = parse_pkcs11_public_key_yaml(pubkey, prefix);
+            match key {
+                Ok(k) => {
+                    res = KeyType::pkfo(k);
+                },
+                Err(e) => {
+                    return Err(anyhow!(""));
+                }
+            }
+        },
+    }
+    Ok(res)
+}
+
+// Attempt to parse a private key in DER format first and PEM format after,
+// returning an error if the parsing failed.
+pub fn parse_private_key(privkey: &Vec<u8>,
+                         privkey_password: &Vec<u8>,
+                         prefix: String,
+) -> Result<KeyType> {
+    // FIXME handle the der and pem formats... will need to check if
+    // RsaPrivateKey can do it.
+    // FIXME need to handle at least some form of private key and not just yaml
+    let res: KeyType;
+    let key = parse_pkcs11_private_key_yaml(privkey, prefix);
+    match key {
+        Ok(k) => {
+            res = KeyType::pkfo(k);
+        },
+        Err(e) => {
+            return Err(anyhow!(""));
+        }
+    }
+    Ok(res)
 }
 
 
-// setEnvVars sets the environment variables given in the map and locks the
-// environment from modification with the same function; if successful, you
-// *must* call restoreEnv with the return
-// value from this function
-fn set_env_vars(env: &HashMap<String, String>)
-                -> Option<std::env::Vars> {
+// Set the environment variables given in the map and lock the environment
+// from modification with the same function; if successful, you *must* call
+// restoreEnv with the return value from this function
+fn set_env_vars(env: &HashMap<String, String>) -> Option<std::env::Vars> {
     // TODO lock
     if env.is_empty() {
         return None;
@@ -89,12 +174,12 @@ fn set_env_vars(env: &HashMap<String, String>)
     Some(oldenv)
 }
 
-// pkcs11_open_session opens a session with a pkcs11 device at the given slot
-// and logs in with the given PIN
+// Open a session with a pkcs11 device at the given slot and logs in with the
+// given PIN
 fn pkcs11_open_session(p11ctx: &pkcs11::Ctx,
                        slotid: u64,
-                       pin: String)
-                       -> Result<pkcs11::types::CK_SESSION_HANDLE> {
+                       pin: String,
+) -> Result<pkcs11::types::CK_SESSION_HANDLE> {
     let flags = pkcs11::types::CKF_SERIAL_SESSION | pkcs11::types::CKF_RW_SESSION;
     let session =
       p11ctx.open_session(slotid,
@@ -102,105 +187,43 @@ fn pkcs11_open_session(p11ctx: &pkcs11::Ctx,
                           None,
                           None)?;
     if !pin.is_empty() {
-        // TODO
-        let usertype = 0;
-        let _ = p11ctx.login(session, usertype, None /*pin*/);
-    }
-    Ok(1)
-}
-
-// HasPIN allows the user to check whether a PIN has been provided either by the pin-value or the pin-source
-// attributes. It should be called before GetPIN(), which may still fail getting the PIN from a file for example.
-fn has_pin(p11uri: &Pkcs11Uri) -> bool {
-    match &p11uri.query_attributes.pin_value {
-        Some(_x) => return true,
-        None => {},
-    }
-    match &p11uri.query_attributes.pin_source {
-        Some(_x) => return true,
-        None => {},
-    }
-    false
-}
-
-// GetPIN gets the PIN from either the pin-value or pin-source attribute; a user may want to call HasPIN()
-// before calling this function to determine whether a PIN has been provided at all so that an error code
-// returned by this function indicates that the PIN value could not be retrieved.
-fn pin(p11uri: &Pkcs11Uri) -> Result<String> {
-    match &p11uri.query_attributes.pin_value {
-        Some(x) => return Ok(x.to_string()),
-        None => {},
-    }
-    match &p11uri.query_attributes.pin_source {
-        Some(v) => {
-            let pinuri = &v.parse::<Uri>()?;
-            let p = match pinuri.scheme_str() {
-                Some(x) => x,
-                None => return Err(anyhow!("")),
-            };
-            match p {
-                "" | "file" => {
-                    if !std::path::Path::new(pinuri.path()).is_absolute() {
-                        // TODO error
-                    }
-                    let pin = std::fs::read_to_string(pinuri.path())?;
-                    return Ok(pin)
-                },
-                _ => {},
-                // FIXME error
-                //return "", fmt.Errorf("PIN URI scheme %s is not supported", pinuri.Scheme)
+        match p11ctx.login(session, pkcs11::types::CKU_USER, Some(&pin)) {
+            Ok(_) => {},
+            Err(e) => {
+                p11ctx.close_session(session);
+                return Err(anyhow!("Could not log in to device"));
             }
-        },
-        None => {},
+        }
     }
-    // FIXME error
-    Ok("".to_string())
-}
-
-fn module(p11uri: &Pkcs11Uri) -> Result<&String> {
-    // FIXME this is not correct. see golang pkcs11-uri. need to search
-    // directories
-    match p11uri.query_attributes.module_name.as_ref() {
-        Some(x) => Ok(x),
-        None => Err(anyhow!("")),
-    }
+    Ok(session)
 }
 
 
-// pkcs11_uri_get_login_parameters gets the parameters necessary for login from the
-// Pkcs11URI PIN and module are mandatory; slot-id is optional and if not found
-// -1 will be returned For a private_key_operation a PIN is required and if none
-// is given, this function will return an error
-fn pkcs11_uri_get_login_parameters(p11uri: &Pkcs11Uri,
-                                   private_key_operation: bool)
-                                   -> Result<(String, &String, Option<u64>)> {
 
+
+
+// Get the parameters necessary for login from the Pkcs11URI.
+// PIN and module are mandatory; slot-id is optional.
+// For a private_key_operation a PIN is required and if none is given, this
+// function will return an error.
+fn pkcs11_uri_get_login_parameters(p11uriw: &Pkcs11UriWrapped,
+                                   private_key_operation: bool,
+) -> Result<(String, String, Option<u64>)> {
     if private_key_operation {
-        if !has_pin(p11uri) {
+        if !p11uriw.has_pin() {
             return Err(anyhow!(""));
         }
     }
     // some devices require a PIN to find a *public* key object, others don't
-    let pin = pin(p11uri)?;
-
-    let module_name = module(p11uri)?;
-
-    //let slotid = match p11uri.path_attributes.slot_id {
-        //Some(x) => x,
-        //None => return None,
-    //};
-    let slotid = p11uri.path_attributes.slot_id;
-
-
+    let pin = p11uriw.pin()?;
+    let module_name = p11uriw.module()?;
+    let slotid = p11uriw.p11uri.path_attributes.slot_id;
     Ok((pin, module_name, slotid))
-
 }
 
-// pkcs11_uri_get_key_id_and_label gets the key label by retrieving the value
-// of the 'object' attribute
-fn pkcs11_uri_get_key_id_and_label(p11uri: &Pkcs11Uri)
-                                   -> Result<(&Vec<u8>, &String)> {
-
+// Get the key label by retrieving the value of the 'object' attribute
+fn pkcs11_uri_get_key_id_and_label(p11uri: &Pkcs11Uri,
+) -> Result<(&Vec<u8>, &String)> {
     let object_id = match p11uri.path_attributes.object_id.as_ref() {
         Some(x) => x,
         None => return Err(anyhow!("")),
@@ -213,15 +236,16 @@ fn pkcs11_uri_get_key_id_and_label(p11uri: &Pkcs11Uri)
 }
 
 
-// pkcs11UriLogin uses the given pkcs11 URI to select the pkcs11 module (share
-// libary) and to get the PIN to use for login; if the URI contains a slot-id,
-// the given slot-id will be used, otherwise one slot after the other will be
-// attempted and the first one where login succeeds will be used
-fn pkcs11_uri_login(p11uri: &Pkcs11Uri,
-                    private_key_operation: bool)
-                    -> Result<(pkcs11::Ctx, pkcs11::types::CK_SESSION_HANDLE)> {
+// Use the given pkcs11 URI to select the pkcs11 module (shared libary) and to
+// get the PIN to use for login; if the URI contains a slot-id,
+// the given slot-id will be used; otherwise one slot after the other will be
+// attempted, and the first one where login succeeds will be used
+fn pkcs11_uri_login(p11uriw: &Pkcs11UriWrapped,
+                    private_key_operation: bool,
+) -> Result<(pkcs11::Ctx, pkcs11::types::CK_SESSION_HANDLE)> {
+    let p11uri = &p11uriw.p11uri;
     let pin_module_slotid
-      = pkcs11_uri_get_login_parameters(p11uri, private_key_operation)?;
+      = pkcs11_uri_get_login_parameters(p11uriw, private_key_operation)?;
     let pin = pin_module_slotid.0;
     let module = pin_module_slotid.1;
     let slotid = pin_module_slotid.2;
@@ -251,10 +275,13 @@ fn pkcs11_uri_login(p11uri: &Pkcs11Uri,
             };
 
             for slot in slots {
-                //let ti = p11ctx.get_token_info(slot)?;
                 let ti = match p11ctx.get_token_info(slot) {
-                    Ok(o) => o,
-                    Err(_) => return Err(anyhow!("")),
+                    Ok(o) => {
+                        o
+                    },
+                    Err(_) => {
+                        return Err(anyhow!("Failed to get token info for slot"));
+                    },
                 };
                 if &String::from(ti.label) != tokenlabel {
                     continue;
@@ -263,28 +290,26 @@ fn pkcs11_uri_login(p11uri: &Pkcs11Uri,
                 let session = pkcs11_open_session(&p11ctx, slot, pin)?;
                 return Ok((p11ctx, session))
             }
-            // TODO: handle error cases
-            /*if len(pin) > 0 {
-                return nil, 0, errors.New("Could not create session to any slot and/or log in")
+            if pin.len() > 0 {
+                return Err(anyhow!("Could not create session to any slot and/or log in"));
             }
-            return nil, 0, errors.New("Could not create session to any slot")*/
-            Ok((p11ctx, session))
+            return Err(anyhow!("Could not create session to any slot"));
         }
     }
 
 }
 
-// find_object finds an object of the given class with the given object_id and/or
+// Find an object of the given class with the given object_id and/or
 // object_label
 fn find_object(p11ctx: &pkcs11::Ctx,
                session: pkcs11::types::CK_SESSION_HANDLE,
                class: u64,
                object_id: &Vec<u8>,
-               object_label: &String)
-               -> Result<pkcs11::types::CK_OBJECT_HANDLE> {
+               object_label: &String,
+) -> Result<pkcs11::types::CK_OBJECT_HANDLE> {
     let mut msg = "".to_string();
 
-    let mut template = Vec::new();
+    let mut template: Vec<pkcs11::types::CK_ATTRIBUTE> = Vec::new();
     let mut a = pkcs11::types::CK_ATTRIBUTE::new(pkcs11::types::CKA_CLASS);
     a.set_ck_ulong(&class);
     template.push(a);
@@ -293,8 +318,7 @@ fn find_object(p11ctx: &pkcs11::Ctx,
         let mut b = pkcs11::types::CK_ATTRIBUTE::new(pkcs11::types::CKA_LABEL);
         b.set_string(object_label);
         template.push(b);
-        // FIXME surely this & format() to-string() is wrong
-        msg += &format!("object_label '{}'", object_label).to_string();
+        msg += &format!("object_label '{}'", object_label);
     }
     if !object_id.is_empty() {
         let mut c = pkcs11::types::CK_ATTRIBUTE::new(pkcs11::types::CKA_ID);
@@ -305,119 +329,154 @@ fn find_object(p11ctx: &pkcs11::Ctx,
         }
         // TODO rust pathescape?
         //msg += url.PathEscape(object_id)
+        //msg += &String::from_utf8_lossy(object_id);
     }
 
-    let _ = p11ctx.find_objects_init(session, &template);
+    match p11ctx.find_objects_init(session, &template) {
+        Ok(_) => {},
+        Err(e) => {
+            return Err(anyhow!("find_objects_init failed"));
+        },
+    }
 
     let obj_handles = p11ctx.find_objects(session, 100)?;
 
-    let _ = p11ctx.find_objects_final(session);
+    match p11ctx.find_objects_final(session) {
+        Ok(_) => {},
+        Err(e) => {
+            return Err(anyhow!("find_objects_final failed"));
+        },
+    }
 
     if obj_handles.len() > 1 {
-        // TODO error
+        return Err(anyhow!("There are too many (={}) keys with {}", obj_handles.len(), msg));
     } else if obj_handles.len() == 1 {
         return Ok(obj_handles[0]);
     }
-    // TODO error
-    Ok(0)
+    Err(anyhow!("Could not find any object with {}", msg))
 }
 
-fn oaep_hashalg(oaephash: String)
-                -> Result<(pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS, String)> {
-    // TODO can we move initialize these Params variables once?
-    // Thread safety issue in rust when naively trying to make it static-global
-    // See also oaep()
+fn construct_oaep_params(
+) -> Result<(pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS,
+             pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS)
+> {
+    // FIXME ? Thread safety issue in rust when naively trying to make this
+    // static-global. Is there a better way than doing this dynamically?
 
-    // OAEPLabel defines the label we use for OAEP encryption; this cannot be changed
+    // oaep_label defines the label we use for OAEP encryption; cannot be changed
     // TODO
-    let OAEPLabel: *mut pkcs11::types::CK_VOID = std::ptr::null_mut();
+    let oaep_label: *mut pkcs11::types::CK_VOID = std::ptr::null_mut();
     let label_len: pkcs11::types::CK_ULONG = 0;
 
-    // Oaep_Sha1_Params describes the OAEP parameters with sha1 hash algorithm;
+    // oaep_sha1_params describes the OAEP parameters with sha1 hash algorithm;
     // needed by SoftHSM
-    let Oaep_Sha1_Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
+    let oaep_sha1_params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
       = pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS {
         hashAlg: pkcs11::types::CKM_SHA1_RSA_PKCS,
         mgf: pkcs11::types::CKG_MGF1_SHA1,
         source: pkcs11::types::CKZ_DATA_SPECIFIED,
-        pSourceData: OAEPLabel,
+        pSourceData: oaep_label,
         ulSourceDataLen: label_len,
     };
 
-
-    // Oaep_Sha256_Params describes the OAEP parameters with sha256 hash
+    // oaep_sha256_params describes the OAEP parameters with sha256 hash
     // algorithm
-    let Oaep_Sha256_Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
+    let oaep_sha256_params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
       = pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS {
         hashAlg: pkcs11::types::CKM_SHA256_RSA_PKCS,
         mgf: pkcs11::types::CKG_MGF1_SHA256,
         source: pkcs11::types::CKZ_DATA_SPECIFIED,
-        pSourceData: OAEPLabel,
+        pSourceData: oaep_label,
         ulSourceDataLen: label_len,
     };
 
+    Ok((oaep_sha1_params, oaep_sha256_params))
+}
+
+fn oaep_hashalg(oaephash: String
+) -> Result<(pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS, String)> {
+    let oaep_params = construct_oaep_params()?;
+    let oaep_sha1_params = oaep_params.0;
+    let oaep_sha256_params = oaep_params.1;
     let tmp = match oaephash.to_lowercase().as_str() {
-        "" => (Oaep_Sha1_Params, "sha1".to_string()),
-        "sha1" => (Oaep_Sha1_Params, "sha1".to_string()),
-        "sha256" => (Oaep_Sha256_Params, "sha256".to_string()),
+        "" => (oaep_sha1_params, "sha1".to_string()),
+        "sha1" => (oaep_sha1_params, "sha1".to_string()),
+        "sha256" => (oaep_sha256_params, "sha256".to_string()),
         // FIXME: _ case should return nil and error
-        _ => (Oaep_Sha256_Params, "sha256".to_string()),
+        _ => (oaep_sha256_params, "sha256".to_string()),
     };
     Ok(tmp)
 }
 fn oaep(hashalg: &String) -> Result<pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS> {
-
-    // TODO: See oaep_hashalg
-    let OAEPLabel: *mut pkcs11::types::CK_VOID = std::ptr::null_mut();
-    let label_len: pkcs11::types::CK_ULONG = 0;
-
-    // Oaep_Sha1_Params describes the OAEP parameters with sha1 hash algorithm;
-    // needed by SoftHSM
-    let Oaep_Sha1_Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
-      = pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS {
-        hashAlg: pkcs11::types::CKM_SHA1_RSA_PKCS,
-        mgf: pkcs11::types::CKG_MGF1_SHA1,
-        source: pkcs11::types::CKZ_DATA_SPECIFIED,
-        pSourceData: OAEPLabel,
-        ulSourceDataLen: label_len,
-    };
-    // Oaep_Sha256_Params describes the OAEP parameters with sha256 hash
-    // algorithm
-    let Oaep_Sha256_Params: pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS
-      = pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS {
-        hashAlg: pkcs11::types::CKM_SHA256_RSA_PKCS,
-        mgf: pkcs11::types::CKG_MGF1_SHA256,
-        source: pkcs11::types::CKZ_DATA_SPECIFIED,
-        pSourceData: OAEPLabel,
-        ulSourceDataLen: label_len,
-    };
-
+    let oaep_params = construct_oaep_params()?;
+    let oaep_sha1_params = oaep_params.0;
+    let oaep_sha256_params = oaep_params.1;
     let oaep = match hashalg.to_lowercase().as_str() {
-        "sha1" | "" => Oaep_Sha1_Params,
-        "sha256" => Oaep_Sha256_Params,
+        "sha1" | "" => oaep_sha1_params,
+        "sha256" => oaep_sha256_params,
         // FIXME: _ case should error
-        _ => Oaep_Sha256_Params,
+        _ => oaep_sha256_params,
     };
     Ok(oaep)
 }
 
 
-// publicEncryptOAEP uses a public key described by a pkcs11 URI to OAEP
-// encrypt the given plaintext
+// Encrypt plaintext with the given RsaPublicKey.
+// The environment variable OCICRYPT_OAEP_HASHALG can be set to 'sha1' to force
+// usage of sha1 for OAEP (SoftHSM). This function is needed by clients who are
+// using a public key file for pkcs11 encryption
+fn rsa_public_encrypt_oaep(pubkey: &RsaPublicKey,
+                           plaintext: &[u8],
+) -> Result<(Vec<u8>, String)> {
+
+    let oaephash: String = match std::env::var("OCICRYPT_OAEP_HASHALG") {
+        Ok(o) => o,
+        Err(_) => return Err(anyhow!("OCICRYPT_OAEP_HASHALG environment is not
+                                      present or is invalid unicode")),
+    };
+
+    // FIXME skipping for now and hardcoding to 256 below
+    match oaephash.to_lowercase().as_str() {
+        "sha1" => {
+            //let hashfunc = sha1.New();
+            //let hashalg = "sha1";
+            return Err(anyhow!("sha1 not supported"));
+        },
+        "sha256" => {
+            //let hashfunc = sha256.New();
+            //let hashalg = "sha246";
+        },
+        _ => {
+            return Err(anyhow!("Unsupported OAEP hash '{}'", oaephash));
+        },
+    }
+
+    let mut rng = OsRng;
+    //let padding = PaddingScheme::new_oaep::<sha1::Sha1>();
+    let padding = PaddingScheme::new_oaep::<sha2::Sha256>();
+    let ciphertext = pubkey.encrypt(&mut rng, padding, plaintext)?;
+    // FIXME : hardcoding to sha256 for now.
+    Ok((ciphertext, "sha256".to_string()))
+
+
+}
+
+// Uses a public key described by a pkcs11 URI to OAEP encrypt the given
+// plaintext
 fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
-                       plaintext: &[u8])
-                       -> Result<(Vec<u8>, String)> {
+                       plaintext: &[u8],
+) -> Result<(Vec<u8>, String)> {
     // TODO
     // defer restoreEnv(oldenv)
     // defer pkcs11Logout(p11ctx, session)
 
-    let oldenv = set_env_vars(&pub_key.env);
+    let oldenv = set_env_vars(&pub_key.uriw.env_map());
 
-    let p11ctx_session = pkcs11_uri_login(&pub_key.uri, false)?;
+    let p11ctx_session = pkcs11_uri_login(&pub_key.uriw, false)?;
     let p11ctx = p11ctx_session.0;
     let session = p11ctx_session.1;
 
-    let object_id_label = pkcs11_uri_get_key_id_and_label(&pub_key.uri)?;
+    let object_id_label = pkcs11_uri_get_key_id_and_label(&pub_key.uriw.p11uri)?;
     let object_id = object_id_label.0;
     let object_label = object_id_label.1;
 
@@ -450,18 +509,16 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
         ulParameterLen: 0,
     };
     let _ = p11ctx.encrypt_init(session, &mech, p11_pub_key)?;
-
     let ciphertext = p11ctx.encrypt(session, plaintext)?;
-
     Ok((ciphertext, hashalg))
 }
 
 
 
 
-// EncryptMultiple encrypts for one or multiple pkcs11 devices; the public keys passed to this function
-// may either be *rsa.PublicKey or *pkcs11uri.Pkcs11URI; the returned byte array is a JSON string of the
-// following format:
+// Encrypt for one or multiple pkcs11 devices; the public keys passed to this
+// function may either be *rsa.PublicKey or *pkcs11uri.Pkcs11URI; the returned
+// byte array is a JSON string of the following format:
 // {
 //   recipients: [  // recipient list
 //     {
@@ -477,20 +534,32 @@ fn public_encrypt_oaep(pub_key: &Pkcs11KeyFileObject,
 //     [...]
 //   ]
 // }
-pub fn encrypt_multiple(pub_keys: &Vec<Pkcs11KeyFileObject>,
-                       data: &[u8])
-                       -> Result<Vec<u8>> {
-
+pub fn encrypt_multiple(pub_keys: &Vec<KeyType>,
+                        data: &[u8],
+) -> Result<Vec<u8>> {
     let mut pkcs11_blob: Pkcs11Blob = Pkcs11Blob{
         version: 0,
         recipients: Vec::new(),
     };
     for pub_key in pub_keys {
-        let ciphertext_hashalg = public_encrypt_oaep(pub_key, data)?;
+        
+        // FIXME
+        let ciphertext_hashalg: (Vec<u8>, String);
+        match pub_key {
+            KeyType::rpk(r) => {
+                ciphertext_hashalg = rsa_public_encrypt_oaep(r, data)?;
+            },
+            KeyType::pkfo(p) => {
+                ciphertext_hashalg = public_encrypt_oaep(p, data)?;
+            },
+        }
         let ciphertext = ciphertext_hashalg.0;
         let mut hashalg = ciphertext_hashalg.1;
 
+        // FIXME ? I think the golang version sort of noop'd here and don't
+        // know why
         if hashalg == OAEP_DEFAULT_HASH {
+            // FIXME why?
             hashalg = "".to_string();
         }
         let recipient = Pkcs11Recipient {
@@ -498,37 +567,35 @@ pub fn encrypt_multiple(pub_keys: &Vec<Pkcs11KeyFileObject>,
             blob:    base64::encode(ciphertext),
             hash:    hashalg,
         };
-
         pkcs11_blob.recipients.push(recipient);
     }
     Ok(serde_json::to_vec(&pkcs11_blob)?)
 }
 
-// privateDecryptOAEP uses a pkcs11 URI describing a private key to OAEP decrypt a ciphertext
-//func privateDecryptOAEP(privKeyObj *Pkcs11KeyFileObject, ciphertext []byte, hashalg string) ([]byte, error) {
+// Use a pkcs11 URI describing a private key to OAEP decrypt a ciphertext
 fn private_decrypt_oaep(priv_key: &Pkcs11KeyFileObject,
                         ciphertext: &Vec<u8>,
-                        hashalg: &String)
-                        -> Result<Vec<u8>> {
+                        hashalg: &String,
+) -> Result<Vec<u8>> {
     // FIXME remove boilerplate similar to public_encrypt_oaep
     // TODO
     // defer restoreEnv(oldenv)
     // defer pkcs11Logout(p11ctx, session)
-    let oldenv = set_env_vars(&priv_key.env);
+    let oldenv = set_env_vars(&priv_key.uriw.env_map());
 
-    let p11ctx_session = pkcs11_uri_login(&priv_key.uri, true)?;
+    let p11ctx_session = pkcs11_uri_login(&priv_key.uriw, true)?;
     let p11ctx = p11ctx_session.0;
     let session = p11ctx_session.1;
 
-    let object_id_label = pkcs11_uri_get_key_id_and_label(&priv_key.uri)?;
+    let object_id_label = pkcs11_uri_get_key_id_and_label(&priv_key.uriw.p11uri)?;
     let object_id = object_id_label.0;
     let object_label = object_id_label.1;
 
     let p11_priv_key = find_object(&p11ctx,
-                                  session,
-                                  pkcs11::types::CKO_PRIVATE_KEY,
-                                  object_id,
-                                  object_label)?;
+                                   session,
+                                   pkcs11::types::CKO_PRIVATE_KEY,
+                                   object_id,
+                                   object_label)?;
 
     let mut oaep = oaep(hashalg)?;
 
@@ -552,7 +619,7 @@ fn private_decrypt_oaep(priv_key: &Pkcs11KeyFileObject,
 }
 
 
-// Decrypt tries to decrypt one of the recipients' blobs using a pkcs11 private key.
+// Try to decrypt one of the recipients' blobs using a pkcs11 private key.
 // The input pkcs11blobstr is a string with the following format:
 // {
 //   recipients: [  // recipient list
@@ -568,10 +635,9 @@ fn private_decrypt_oaep(priv_key: &Pkcs11KeyFileObject,
 //     } ,
 //     [...]
 // }
-//func Decrypt(privKeyObjs []*Pkcs11KeyFileObject, pkcs11blobstr []byte) ([]byte, error) {
 pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
-                      pkcs11blobstr: &[u8])
-                      -> Result<Vec<u8>> {
+                      pkcs11blobstr: &[u8],
+) -> Result<Vec<u8>> {
 
     let pkcs11_blob: Pkcs11Blob = serde_json::from_slice(pkcs11blobstr)?;
     if pkcs11_blob.version != 0 {
@@ -585,7 +651,6 @@ pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
             return Err(anyhow!(""));
         }
 
-        //ciphertext, err := base64.StdEncoding.DecodeString(recipient.Blob)
         let ciphertext = match base64::decode(recipient.blob) {
             Ok(c) => {
                 if c.is_empty() {
@@ -599,7 +664,7 @@ pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
             Err(_) => {
                 // FIXME append error message of e
                 //"Base64 decoding failed: %s\n", err
-                errs += "1";
+                errs += "2";
                 continue;
             },
         };
@@ -607,7 +672,9 @@ pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
         for priv_key in priv_keys {
             let plaintext = private_decrypt_oaep(priv_key, &ciphertext, &recipient.hash);
             match plaintext {
-                Ok(x) => return Ok(x),
+                Ok(x) => {
+                    return Ok(x);
+                },
                 Err(_) => {
                     // TODO
                     //if uri, err2 := privKeyObj.Uri.Format(); err2 == nil {
@@ -615,13 +682,10 @@ pub fn decrypt_pkcs11(priv_keys: &Vec<Pkcs11KeyFileObject>,
                     //} else {
                     //    errs += fmt.Sprintf("%s\n", err)
                     //}
-                }
+                },
             }
         }
     }
 
-    // TODO use errs string
-    //return nil, errors.Errorf("Could not find a pkcs11 key for decryption:\n%s", errs)
-    Err(anyhow!(""))
+    Err(anyhow!("Could not find a pkcs11 key for decryption: {}", errs))
 }
-
