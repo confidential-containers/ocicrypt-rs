@@ -4,4 +4,5 @@ pub mod helpers;
 pub mod keywrap;
 pub mod spec;
 pub mod utils;
-pub mod ors_error;
+pub mod softhsm;
+pub mod pkcs11_uri_wrapped;
