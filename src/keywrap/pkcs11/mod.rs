@@ -179,9 +179,7 @@ mod kw_tests {
         let valid_pkcs11_ccs = vs.0;
         let shsm = vs.1;
 
-        // FIXME
-        //std::env::set_var("OCICRYPT_OAEP_HASHALG", "sha1");
-        std::env::set_var("OCICRYPT_OAEP_HASHALG", "sha256");
+        std::env::set_var("OCICRYPT_OAEP_HASHALG", "sha1");
 
         for cc in valid_pkcs11_ccs {
             let kw = Pkcs11KeyWrapper{};
