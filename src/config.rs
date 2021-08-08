@@ -308,10 +308,8 @@ impl Pkcs11Config {
                 }
                 // fall out of match
             }
-            Err(e) => match e {
-                std::env::VarError::NotPresent => (), // fall out of match
-                std::env::VarError::NotUnicode(s) => return Err(anyhow!("")),
-            },
+            Err(std::env::VarError::NotPresent) => (), // fall out of match
+            Err(std::env::VarError::NotUnicode(_)) => return Err(anyhow!("Invalid filename")),
         };
 
         match std::env::var(XDGCONFIGHOME) {
@@ -323,10 +321,8 @@ impl Pkcs11Config {
                 }
                 // fall out of match
             }
-            Err(e) => match e {
-                std::env::VarError::NotPresent => (), // fall out of match
-                std::env::VarError::NotUnicode(s) => return Err(anyhow!("")),
-            },
+            Err(std::env::VarError::NotPresent) => (), // fall out of match
+            Err(std::env::VarError::NotUnicode(_)) => return Err(anyhow!("Invalid filename")),
         };
 
         match std::env::var(HOME) {
@@ -339,10 +335,8 @@ impl Pkcs11Config {
                 }
                 // fall out of match
             }
-            Err(e) => match e {
-                std::env::VarError::NotPresent => (), // fall out of match
-                std::env::VarError::NotUnicode(s) => return Err(anyhow!("")),
-            },
+            Err(std::env::VarError::NotPresent) => (), // fall out of match
+            Err(std::env::VarError::NotUnicode(_)) => return Err(anyhow!("Invalid filename")),
         }
 
         let mut p = std::path::PathBuf::from("/etc");
