@@ -48,5 +48,4 @@ pub trait KeyWrapper {
     fn recipients(&self, recipients: String) -> Option<Vec<String>> {
         None
     }
-
 }

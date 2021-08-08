@@ -5,9 +5,9 @@
 //
 
 use anyhow::{anyhow, Result};
-use std::collections::HashMap;
-use pkcs11_uri::{Pkcs11Uri};
 use http::Uri;
+use pkcs11_uri::Pkcs11Uri;
+use std::collections::HashMap;
 
 pub struct Pkcs11UriWrapped {
     pub p11uri: Pkcs11Uri,
@@ -22,12 +22,10 @@ pub struct Pkcs11UriWrapped {
     env: HashMap<String, String>,
 }
 
-
 impl Pkcs11UriWrapped {
-
     // Constructs a new Pkcs11UriWrapped instance
     pub fn new(uri: Pkcs11Uri) -> Result<Self> {
-        Ok(Pkcs11UriWrapped{
+        Ok(Pkcs11UriWrapped {
             p11uri: uri,
             module_directories: vec![],
             allowed_module_paths: vec![],
@@ -65,10 +63,7 @@ impl Pkcs11UriWrapped {
         &self.module_directories
     }
 
-    pub fn is_allowed_path(&self,
-                           path: &String,
-                           allowed_paths: &Vec<String>,
-    ) -> Result<bool> {
+    pub fn is_allowed_path(&self, path: &String, allowed_paths: &Vec<String>) -> Result<bool> {
         if self.allow_any_module {
             return Ok(true);
         }
@@ -79,7 +74,7 @@ impl Pkcs11UriWrapped {
             }
             // FIXME: replace with idiomatic rust
             let ap_bytes = allowed_path.as_bytes();
-            let last_byte: u8 = ap_bytes[ap_bytes.len()-1];
+            let last_byte: u8 = ap_bytes[ap_bytes.len() - 1];
             if last_byte == b'/' && path.starts_with(allowed_path) {
                 // allowed_path no subdirectory is allowed
                 let p_bytes = path.as_bytes();
@@ -106,7 +101,7 @@ impl Pkcs11UriWrapped {
     pub fn pin(&self) -> Result<String> {
         match &self.p11uri.query_attributes.pin_value {
             Some(x) => return Ok(x.to_string()),
-            None => {},
+            None => {}
         }
         match &self.p11uri.query_attributes.pin_source {
             Some(v) => {
@@ -121,23 +116,24 @@ impl Pkcs11UriWrapped {
                             return Err(anyhow!("PIN URI path {} is not absolute", pinuri.path()));
                         }
                         let pin = std::fs::read_to_string(pinuri.path())?;
-                        return Ok(pin)
-                    },
+                        return Ok(pin);
+                    }
                     _ => {
                         let ss = pinuri.scheme_str();
                         match ss {
-                            Some(s) => return Err(anyhow!("PIN URI scheme {} is not supported", s)),
+                            Some(s) => {
+                                return Err(anyhow!("PIN URI scheme {} is not supported", s))
+                            }
                             None => return Err(anyhow!("failed to get scheme from pin URI")),
                         }
-                    },
+                    }
                 }
-            },
-            None => {},
+            }
+            None => {}
         }
         // FIXME error
         Err(anyhow!("Neither pin-source nor pin-value are available"))
     }
-
 
     // has_pin allows the user to check whether a PIN has been provided either by
     // the pin-value or the pin-source attributes. It should be called before
@@ -145,15 +141,14 @@ impl Pkcs11UriWrapped {
     pub fn has_pin(&self) -> bool {
         match &self.p11uri.query_attributes.pin_value {
             Some(_x) => return true,
-            None => {},
+            None => {}
         }
         match &self.p11uri.query_attributes.pin_source {
             Some(_x) => return true,
-            None => {},
+            None => {}
         }
         false
     }
-
 
     // Get the module to use or an error in case no module could be found.
     // First the module-path is checked for whether it holds an absolute that
@@ -212,8 +207,9 @@ impl Pkcs11UriWrapped {
                 // a suffix follows so that softhsm will not match
                 // libsofthsm2.so but only libsofthsm.so
                 // FIXME: replace with idiomatic rust
-                if file_lower.len() == idx+module_name.len()
-                || file_lower.as_bytes()[idx+module_name.len()] == b'.' {
+                if file_lower.len() == idx + module_name.len()
+                    || file_lower.as_bytes()[idx + module_name.len()] == b'.'
+                {
                     let f = std::path::Path::new(dir).join(file.file_name());
                     // TODO
                     let fstr = f.as_path().display().to_string();

@@ -1,7 +1,6 @@
-
 use anyhow::{anyhow, Result};
-use tempdir::TempDir;
 use std::process::Command;
+use tempdir::TempDir;
 
 use std::{thread, time};
 
@@ -12,19 +11,17 @@ pub struct SoftHSMSetup {
     pub statedir_folder: TempDir,
 }
 
-
 // A SoftHSM setup. Construct a new instance with ::new().
 // Calling run() methods on the instance will invoke `softhsm_setup`
 // Note: Use run_softhsm_setup() first before before calling other functions.
 impl SoftHSMSetup {
-
     // Constructs a new SoftHSMSetup instance.
     pub fn new() -> Result<Self> {
         // create a temporary folder (deleted when instance goes out of scope)
         let statedir_folder = TempDir::new(TEMPDIR_PREFIX)?;
         // string of the temporary folder's path
         let statedir_path = statedir_folder.path().to_string_lossy().to_string();
-        Ok(SoftHSMSetup{
+        Ok(SoftHSMSetup {
             statedir_path: statedir_path,
             statedir_folder: statedir_folder,
         })
@@ -39,39 +36,42 @@ impl SoftHSMSetup {
     // displayed
     pub fn run_softhsm_setup(&self, softhsm_setup: &String) -> Result<String> {
         let res = Command::new(softhsm_setup)
-                          .arg("setup")
-                          .env("SOFTHSM_SETUP_CONFIGDIR", &self.statedir_path)
-                          .output()?;
+            .arg("setup")
+            .env("SOFTHSM_SETUP_CONFIGDIR", &self.statedir_path)
+            .output()?;
         let res = String::from_utf8(res.stdout)?;
         match res.find("pkcs11:") {
             Some(idx) => {
                 let trim_me: &[_] = &[' ', '\n'];
                 let res = res[idx..].trim_end_matches(trim_me);
                 return Ok(res.to_string());
-            },
-            None => return Err(anyhow!("Failed to find 'pkcs11:' in output 
-                                       from `softhsm setup`")),
+            }
+            None => {
+                return Err(anyhow!(
+                    "Failed to find 'pkcs11:' in output 
+                                       from `softhsm setup`"
+                ))
+            }
         };
     }
 
     // Invokes `softhsm_setup getpubkey` and returns the public key
     pub fn run_softhsm_get_pubkey(&self, softhsm_setup: &String) -> Result<String> {
         let res = Command::new(softhsm_setup)
-                          .arg("getpubkey")
-                          .env("SOFTHSM_SETUP_CONFIGDIR", &self.statedir_path)
-                          .output()?;
+            .arg("getpubkey")
+            .env("SOFTHSM_SETUP_CONFIGDIR", &self.statedir_path)
+            .output()?;
         Ok(String::from_utf8(res.stdout)?)
     }
 
     // Invokes `softhsm_setup teardown`
     pub fn run_softhsm_teardown(&self, softhsm_setup: &String) -> Result<()> {
         let _ = Command::new(softhsm_setup)
-                        .arg("teardown")
-                        .env("SOFTHSM_SETUP_CONFIGDIR", &self.statedir_path)
-                        .output()?;
+            .arg("teardown")
+            .env("SOFTHSM_SETUP_CONFIGDIR", &self.statedir_path)
+            .output()?;
         Ok(())
     }
-
 }
 
 #[cfg(test)]
@@ -93,7 +93,7 @@ mod softhsm_tests {
         assert!(filename.contains("softhsm2.conf"));
         assert!(filename.contains(("/tmp/".to_string() + TEMPDIR_PREFIX).as_str()));
     }
-    
+
     #[test]
     fn test_run_softhsm_setup() {
         let shsm_setup = SoftHSMSetup::new().unwrap();
@@ -104,7 +104,7 @@ mod softhsm_tests {
             Err(e) => assert!(false),
         };
     }
-    
+
     //#[test]
     // FIXME commenting out for now b/c it's slow
     fn test_run_softhsm_get_pubkey() {
@@ -137,5 +137,4 @@ mod softhsm_tests {
 
         shsm_setup.run_softhsm_teardown(&path_to_script).unwrap();
     }
-
 }
