@@ -282,7 +282,7 @@ mod tests {
 // The file has the following yaml format:
 // module_directories:
 // - /usr/lib64/pkcs11/
-// allowed_module_paths
+// allowed_module_paths:
 // - /usr/lib64/pkcs11/libsofthsm2.so
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Pkcs11Config {
