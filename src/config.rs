@@ -364,10 +364,7 @@ impl Pkcs11Config {
             module_directories: vec![],
             allowed_module_paths: vec![],
         };
-        let c = self.get_configuration()?;
-        // TODO ? can we ever get an empty pkcs11config from get-configuration?
-        // see go version's error handling here...
-        Ok(c)
+        Ok(self.get_configuration()?)
     }
 }
 
