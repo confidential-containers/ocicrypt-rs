@@ -392,10 +392,7 @@ fn get_default_module_directories() -> Result<Vec<String>> {
     ];
 
     // Debian directory: /usr/lib/(x86_64|aarch64|arm|powerpc64le|s390x)-linux-gnu/
-    let hoq = get_host_and_os_type()?;
-    let hosttype = hoq.0;
-    let ostype = hoq.1;
-    let q = hoq.2;
+    let (hosttype, ostype, q) = get_host_and_os_type()?;
     if hosttype.len() > 0 {
         let dir = format!("/usr/lib/{}-{}-{}/", hosttype, ostype, q);
         dirs.push(dir);
