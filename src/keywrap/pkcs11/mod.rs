@@ -108,9 +108,8 @@ fn p11conf_from_params(
 }
 
 fn add_pub_keys(dc: &DecryptConfig, pubkeys: &Vec<Vec<u8>>) -> Result<Vec<KeyType>> {
-    let mut pkcs11_keys = Vec::<KeyType>::new();
     if pubkeys.is_empty() {
-        return Ok(pkcs11_keys);
+        return Ok(vec![]);
     }
     let p11conf_opt = p11conf_from_params(&dc.param)?;
     // parse and collect keys pkcs11 keys.
