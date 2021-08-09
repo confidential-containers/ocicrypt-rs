@@ -112,24 +112,25 @@ fn add_pub_keys(dc: &DecryptConfig, pubkeys: &Vec<Vec<u8>>) -> Result<Vec<KeyTyp
     if pubkeys.is_empty() {
         return Ok(pkcs11_keys);
     }
-
     let p11conf_opt = p11conf_from_params(&dc.param)?;
-
-    for pubkey in pubkeys {
-        let mut k = parse_public_key(pubkey, "PKCS11".to_string())?;
-        match &mut k {
-            KeyType::rpk(r) => {}
-            KeyType::pkfo(p) => {
+    // parse and collect keys pkcs11 keys.
+    // also update the module dirs and allowed module paths if appropriate
+    let pkcs11_keys: Vec<KeyType> = pubkeys
+        .iter()
+        .map(|key| parse_public_key(key, "PKCS11".to_string()))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .map(|mut key| {
+            if let KeyType::pkfo(ref mut p) = key {
                 if let Some(ref p11conf) = p11conf_opt {
                     p.uriw.set_module_directories(&p11conf.module_directories);
                     p.uriw
                         .set_allowed_module_paths(&p11conf.allowed_module_paths);
                 }
             }
-        }
-        pkcs11_keys.push(k);
-    }
-
+            key
+        })
+        .collect();
     Ok(pkcs11_keys)
 }
 
