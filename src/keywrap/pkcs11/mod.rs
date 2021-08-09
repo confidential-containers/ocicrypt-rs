@@ -55,10 +55,9 @@ impl KeyWrapper for Pkcs11KeyWrapper {
     fn unwrap_keys(&self, dc: &DecryptConfig, annotation: &[u8]) -> Result<Vec<u8>> {
         let mut pkcs11_keys = Vec::new();
 
-        let priv_keys = match self.private_keys(&dc.param) {
-            Some(x) => x,
-            None => return Err(anyhow!("")),
-        };
+        let priv_keys = self
+            .private_keys(&dc.param)
+            .ok_or_else(|| anyhow!("No private keys found for PKCS11 decryption"))?;
 
         let p11conf_opt = p11conf_from_params(&dc.param)?;
 
