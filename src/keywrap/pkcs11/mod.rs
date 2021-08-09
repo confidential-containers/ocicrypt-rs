@@ -49,9 +49,7 @@ impl KeyWrapper for Pkcs11KeyWrapper {
             return Ok(Vec::new());
         }
 
-        let json_str = encrypt_multiple(&pkcs11_recipients, opts_data)?;
-
-        Ok(json_str)
+        Ok(encrypt_multiple(&pkcs11_recipients, opts_data)?)
     }
 
     fn unwrap_keys(&self, dc: &DecryptConfig, annotation: &[u8]) -> Result<Vec<u8>> {
@@ -79,9 +77,7 @@ impl KeyWrapper for Pkcs11KeyWrapper {
             }
         }
 
-        let plaintext = decrypt_pkcs11(&pkcs11_keys, annotation)?;
-
-        Ok(plaintext)
+        Ok(decrypt_pkcs11(&pkcs11_keys, annotation)?)
     }
 
     fn annotation_id(&self) -> &str {
