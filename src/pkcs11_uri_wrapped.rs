@@ -47,7 +47,7 @@ impl Pkcs11UriWrapped {
     // Set the search directories for pkcs11 modules
     //func (uri *Pkcs11URI) SetModuleDirectories(moduleDirectories []string) {
     pub fn set_module_directories(&mut self, module_directories: &Vec<String>) {
-        self.module_directories = module_directories.to_vec();
+        self.module_directories = module_directories.clone();
     }
 
     // Set allowed module paths to restrict access to modules.
@@ -55,7 +55,7 @@ impl Pkcs11UriWrapped {
     // All other ones are assumed to be file entries.
     // Allowed modules are filtered by string matching.
     pub fn set_allowed_module_paths(&mut self, allowed_module_paths: &Vec<String>) {
-        self.allowed_module_paths = allowed_module_paths.to_vec();
+        self.allowed_module_paths = allowed_module_paths.clone();
     }
 
     // Get the search directories for pkcs11 modules
