@@ -27,24 +27,14 @@ impl KeyWrapper for Pkcs11KeyWrapper {
     // which describe the symmetric key used for encrypting the layer
     fn wrap_keys(&self, ec: &EncryptConfig, opts_data: &[u8]) -> Result<Vec<u8>> {
         let mut pubkeys: Vec<Vec<u8>> = Vec::new();
-        match ec.param.get("pkcs11-pubkeys") {
-            Some(pks) => {
-                for p in pks {
-                    pubkeys.push(p.to_vec());
-                }
-            }
-            None => (),
+        if let Some(pks) = ec.param.get("pkcs11-pubkeys") {
+            pubkeys.extend(pks.clone());
         }
-        match ec.param.get("pkcs11-yamls") {
-            Some(yamls) => {
-                for y in yamls {
-                    pubkeys.push(y.to_vec());
-                }
-            }
-            None => (),
+        if let Some(yamls) = ec.param.get("pkcs11-yamls") {
+            pubkeys.extend(yamls.clone());
         };
-        let dc = match ec.decrypt_config.as_ref() {
-            Some(pubkeys) => pubkeys,
+        let decrypt_config_pubkeys = match ec.decrypt_config.as_ref() {
+            Some(x) => x,
             None => {
                 return Err(anyhow!(
                     "EncryptConfig is missing
@@ -53,7 +43,7 @@ impl KeyWrapper for Pkcs11KeyWrapper {
             }
         };
 
-        let pkcs11_recipients: Vec<KeyType> = add_pub_keys(&dc, &pubkeys)?;
+        let pkcs11_recipients: Vec<KeyType> = add_pub_keys(&decrypt_config_pubkeys, &pubkeys)?;
 
         if pkcs11_recipients.is_empty() {
             return Ok(Vec::new());
