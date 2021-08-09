@@ -140,11 +140,10 @@ fn add_pub_keys(dc: &DecryptConfig, pubkeys: &Vec<Vec<u8>>) -> Result<Vec<KeyTyp
 mod kw_tests {
     use super::*;
 
-    //const SOFTHSM_SETUP: &str = "../../scripts/softhsm_setup";
+    const SOFTHSM_SETUP: &str = "scripts/softhsm_setup";
 
     #[test]
     fn test_keywrap_pkcs11_success() {
-        let path_to_script = env!("CARGO_MANIFEST_DIR").to_string() + "/scripts/softhsm_setup";
         let vs = create_valid_pkcs11_ccs().unwrap();
         let valid_pkcs11_ccs = vs.0;
         let shsm = vs.1;
@@ -169,7 +168,7 @@ mod kw_tests {
             }
         }
 
-        shsm.run_softhsm_teardown(&path_to_script);
+        shsm.run_softhsm_teardown(&SOFTHSM_SETUP.to_string());
     }
 
     #[test]
@@ -232,12 +231,8 @@ mod kw_tests {
 
     fn create_valid_pkcs11_ccs() -> Result<(Vec<CryptoConfig>, SoftHSMSetup)> {
         let shsm = SoftHSMSetup::new()?;
-        // FIXME: This pathing is brittle. Should we be relative to this module
-        // file?  Should it be based off the project's root folder? What about
-        // after `make install`?
-        let path_to_script = env!("CARGO_MANIFEST_DIR").to_string() + "/scripts/softhsm_setup";
-        let pkcs11_pubkey_uri_str = shsm.run_softhsm_setup(&path_to_script)?;
-        let pubkey_pem = shsm.run_softhsm_get_pubkey(&path_to_script)?;
+        let pkcs11_pubkey_uri_str = shsm.run_softhsm_setup(&SOFTHSM_SETUP.to_string())?;
+        let pubkey_pem = shsm.run_softhsm_get_pubkey(&SOFTHSM_SETUP.to_string())?;
         let pkcs11_privkey_yaml = format!(
             "pkcs11:
   uri: {}
