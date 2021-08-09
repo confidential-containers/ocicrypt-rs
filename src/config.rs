@@ -408,24 +408,18 @@ pub fn get_default_module_directories_yaml(indent: String) -> Result<String> {
 }
 
 fn get_host_and_os_type() -> Result<(String, String, String)> {
-    let mut ht = "";
-    let mut ot = "";
-    let mut st = "";
     match std::env::consts::OS {
         "linux" => {
-            ot = "linux";
-            st = "gnu";
-            match std::env::consts::ARCH {
-                "arm" => ht = "arm",
-                "arm64" => ht = "aarch64",
-                "amd64" => ht = "x86_64",
-                "ppc64le" => ht = "powerpc64le",
-                "s390x" => ht = "s390x",
-                _ => (),
-            }
-            //return Ok((ht.to_string(), ot.to_string(), st.to_string()));
+            let arch = match std::env::consts::ARCH {
+                "arm" => "arm",
+                "arm64" => "aarch64",
+                "amd64" => "x86_64",
+                "ppc64le" => "powerpc64le",
+                "s390x" => "s390x",
+                _ => "",
+            };
+            return Ok(("linux".to_string(), arch.to_string(), "gnu".to_string()));
         }
-        _ => (),
+        _ => return Ok(("".to_string(), "".to_string(), "".to_string())),
     }
-    Ok((ht.to_string(), ot.to_string(), st.to_string()))
 }
