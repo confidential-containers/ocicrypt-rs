@@ -53,29 +53,32 @@ impl KeyWrapper for Pkcs11KeyWrapper {
     }
 
     fn unwrap_keys(&self, dc: &DecryptConfig, annotation: &[u8]) -> Result<Vec<u8>> {
-        let mut pkcs11_keys = Vec::new();
-
-        let priv_keys = self
+        let priv_keys: Vec<Vec<u8>> = self
             .private_keys(&dc.param)
             .ok_or_else(|| anyhow!("No private keys found for PKCS11 decryption"))?;
 
         let p11conf_opt = p11conf_from_params(&dc.param)?;
 
-        for key in priv_keys {
-            let mut k = parse_private_key(&key, &vec![], "PKCS11".to_string())?;
-            match k {
-                KeyType::rpk(r) => {}
-                KeyType::pkfo(mut p) => {
+        // Parse the private keys.
+        // Then filter out just the "pkfo" (Pkcs11KeyFileObject) variants,
+        // and update the module dirs and allowed modules paths if appropriate
+        let pkcs11_keys: Vec<Pkcs11KeyFileObject> = priv_keys
+            .iter()
+            .map(|key| parse_private_key(&key, &vec![], "PKCS11".to_string()))
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .filter_map(|key| {
+                if let KeyType::pkfo(mut p) = key {
                     if let Some(ref p11conf) = p11conf_opt {
                         p.uriw.set_module_directories(&p11conf.module_directories);
                         p.uriw
                             .set_allowed_module_paths(&p11conf.allowed_module_paths);
                     }
-                    pkcs11_keys.push(p);
+                    return Some(p);
                 }
-            }
-        }
-
+                None
+            })
+            .collect();
         Ok(decrypt_pkcs11(&pkcs11_keys, annotation)?)
     }
 
