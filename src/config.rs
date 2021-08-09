@@ -300,8 +300,7 @@ impl Pkcs11Config {
         match std::env::var(ENVVARNAME) {
             Ok(filename) => {
                 if filename == "internal" {
-                    // TODO
-                    //return getDefaultCryptoConfigOpts()
+                    return self.get_default_crypto_config_opts();
                 }
                 if std::path::Path::new(&filename).exists() {
                     return parse_config_file(filename);
