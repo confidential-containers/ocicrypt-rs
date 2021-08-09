@@ -314,8 +314,7 @@ impl Pkcs11Config {
 
         match std::env::var(XDGCONFIGHOME) {
             Ok(envvar) => {
-                let mut p = std::path::PathBuf::from(envvar);
-                p.push(CONFIGFILE);
+                let p: std::path::PathBuf = [envvar, CONFIGFILE.to_string()].iter().collect();
                 if std::path::Path::new(&p).exists() {
                     return parse_config_file(p.to_str().unwrap().to_string());
                 }
@@ -327,9 +326,9 @@ impl Pkcs11Config {
 
         match std::env::var(HOME) {
             Ok(envvar) => {
-                let mut p = std::path::PathBuf::from(envvar);
-                p.push(".config");
-                p.push(CONFIGFILE);
+                let p: std::path::PathBuf = [envvar, ".config".to_string(), CONFIGFILE.to_string()]
+                    .iter()
+                    .collect();
                 if std::path::Path::new(&p).exists() {
                     return parse_config_file(p.to_str().unwrap().to_string());
                 }
@@ -339,8 +338,9 @@ impl Pkcs11Config {
             Err(std::env::VarError::NotUnicode(_)) => return Err(anyhow!("Invalid filename")),
         }
 
-        let mut p = std::path::PathBuf::from("/etc");
-        p.push(CONFIGFILE);
+        let p: std::path::PathBuf = ["/etc".to_string(), CONFIGFILE.to_string()]
+            .iter()
+            .collect();
         if std::path::Path::new(&p).exists() {
             return parse_config_file(p.to_str().unwrap().to_string());
         }
