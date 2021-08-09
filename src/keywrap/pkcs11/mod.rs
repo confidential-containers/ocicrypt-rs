@@ -144,9 +144,7 @@ mod kw_tests {
 
     #[test]
     fn test_keywrap_pkcs11_success() {
-        let vs = create_valid_pkcs11_ccs().unwrap();
-        let valid_pkcs11_ccs = vs.0;
-        let shsm = vs.1;
+        let (valid_pkcs11_ccs, shsm) = create_valid_pkcs11_ccs().unwrap();
 
         std::env::set_var("OCICRYPT_OAEP_HASHALG", "sha1");
 
