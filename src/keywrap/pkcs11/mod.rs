@@ -70,8 +70,8 @@ impl KeyWrapper for Pkcs11KeyWrapper {
                         p.uriw.set_module_directories(&p11conf.module_directories);
                         p.uriw
                             .set_allowed_module_paths(&p11conf.allowed_module_paths);
-                        pkcs11_keys.push(p);
                     }
+                    pkcs11_keys.push(p);
                 }
             }
         }
