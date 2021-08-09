@@ -24,14 +24,14 @@ pub struct Pkcs11UriWrapped {
 
 impl Pkcs11UriWrapped {
     // Constructs a new Pkcs11UriWrapped instance
-    pub fn new(uri: Pkcs11Uri) -> Result<Self> {
-        Ok(Pkcs11UriWrapped {
+    pub fn new(uri: Pkcs11Uri) -> Self {
+        Pkcs11UriWrapped {
             p11uri: uri,
             module_directories: vec![],
             allowed_module_paths: vec![],
             allow_any_module: false,
             env: HashMap::new(),
-        })
+        }
     }
 
     // Get the map of environment variables

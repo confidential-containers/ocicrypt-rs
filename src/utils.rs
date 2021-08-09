@@ -71,7 +71,7 @@ pub fn parse_pkcs11_uri(uri: &str) -> Result<Pkcs11Uri> {
 pub fn parse_pkcs11_key_file(yaml_bytes: &Vec<u8>) -> Result<Pkcs11KeyFileObject> {
     let p11_key_file: Pkcs11KeyFile = serde_yaml::from_slice(yaml_bytes)?;
     let p11_uri = parse_pkcs11_uri(&p11_key_file.pkcs11.uri)?;
-    let mut p11uriw = Pkcs11UriWrapped::new(p11_uri)?;
+    let mut p11uriw = Pkcs11UriWrapped::new(p11_uri);
     p11uriw.set_env_map(p11_key_file.module.env);
     Ok(Pkcs11KeyFileObject { uriw: p11uriw })
 }
