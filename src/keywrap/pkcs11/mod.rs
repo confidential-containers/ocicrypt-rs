@@ -60,12 +60,12 @@ impl KeyWrapper for Pkcs11KeyWrapper {
         let p11conf_opt = p11conf_from_params(&dc.param)?;
 
         // Parse the private keys.
-        // Then filter out just the "pkfo" (Pkcs11KeyFileObject) variants,
+        // Then filter for just the "pkfo" (Pkcs11KeyFileObject) variants,
         // and update the module dirs and allowed modules paths if appropriate
         let pkcs11_keys: Vec<Pkcs11KeyFileObject> = priv_keys
             .iter()
             .map(|key| parse_private_key(&key, &vec![], "PKCS11".to_string()))
-            .collect::<Result<Vec<_>>>()?
+            .collect::<Result<Vec<KeyType>>>()?
             .into_iter()
             .filter_map(|key| {
                 if let KeyType::pkfo(mut p) = key {
