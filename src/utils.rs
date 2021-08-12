@@ -166,12 +166,9 @@ fn pkcs11_open_session(
     let flags = pkcs11::types::CKF_SERIAL_SESSION | pkcs11::types::CKF_RW_SESSION;
     let session = p11ctx.open_session(slotid, flags, None, None)?;
     if !pin.is_empty() {
-        match p11ctx.login(session, pkcs11::types::CKU_USER, Some(&pin)) {
-            Ok(_) => {}
-            Err(e) => {
-                p11ctx.close_session(session);
-                return Err(anyhow!("Could not log in to device"));
-            }
+        if let Err(e) = p11ctx.login(session, pkcs11::types::CKU_USER, Some(&pin)) {
+            p11ctx.close_session(session);
+            return Err(anyhow!("Could not log in to device"));
         }
     }
     Ok(session)
