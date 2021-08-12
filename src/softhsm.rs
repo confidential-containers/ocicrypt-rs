@@ -7,7 +7,6 @@ use std::{thread, time};
 const TEMPDIR_PREFIX: &str = "ocicrypt-rs";
 
 pub struct SoftHSMSetup {
-    pub statedir_path: String,
     pub statedir_folder: TempDir,
 }
 
@@ -19,17 +18,18 @@ impl SoftHSMSetup {
     pub fn new() -> Result<Self> {
         // create a temporary folder (deleted when instance goes out of scope)
         let statedir_folder = TempDir::new(TEMPDIR_PREFIX)?;
-        // string of the temporary folder's path
-        let statedir_path = statedir_folder.path().to_string_lossy().to_string();
         Ok(SoftHSMSetup {
-            statedir_path: statedir_path,
             statedir_folder: statedir_folder,
         })
     }
 
     // Returns the path to the softhsm configuration file.
     pub fn get_config_filename(&self) -> Result<String> {
-        Ok(format!("{}/softhsm2.conf", self.statedir_path).to_string())
+        Ok(format!(
+            "{}/softhsm2.conf",
+            self.statedir_folder.path().to_string_lossy().to_string()
+        )
+        .to_string())
     }
 
     // Invokes `softhsm_setup setup` and returns the public key that was
@@ -37,7 +37,10 @@ impl SoftHSMSetup {
     pub fn run_softhsm_setup(&self, softhsm_setup: &String) -> Result<String> {
         let res = Command::new(softhsm_setup)
             .arg("setup")
-            .env("SOFTHSM_SETUP_CONFIGDIR", &self.statedir_path)
+            .env(
+                "SOFTHSM_SETUP_CONFIGDIR",
+                &self.statedir_folder.path().to_string_lossy().to_string(),
+            )
             .output()?;
         let res = String::from_utf8(res.stdout)?;
         match res.find("pkcs11:") {
@@ -59,7 +62,10 @@ impl SoftHSMSetup {
     pub fn run_softhsm_get_pubkey(&self, softhsm_setup: &String) -> Result<String> {
         let res = Command::new(softhsm_setup)
             .arg("getpubkey")
-            .env("SOFTHSM_SETUP_CONFIGDIR", &self.statedir_path)
+            .env(
+                "SOFTHSM_SETUP_CONFIGDIR",
+                &self.statedir_folder.path().to_string_lossy().to_string(),
+            )
             .output()?;
         Ok(String::from_utf8(res.stdout)?)
     }
@@ -68,7 +74,10 @@ impl SoftHSMSetup {
     pub fn run_softhsm_teardown(&self, softhsm_setup: &String) -> Result<()> {
         let _ = Command::new(softhsm_setup)
             .arg("teardown")
-            .env("SOFTHSM_SETUP_CONFIGDIR", &self.statedir_path)
+            .env(
+                "SOFTHSM_SETUP_CONFIGDIR",
+                &self.statedir_folder.path().to_string_lossy().to_string(),
+            )
             .output()?;
         Ok(())
     }
