@@ -10,8 +10,8 @@ fn min(a: usize, b: usize) -> usize {
     return b;
 }
 
-struct DelayedReader {
-    reader: Box<dyn Read>,
+struct DelayedReader<R: Read> {
+    reader: R,
     err : Option<ErrorKind>,
     buffer : Vec<u8>,
     bufbytes : usize,
@@ -19,7 +19,7 @@ struct DelayedReader {
     is_eof : bool,
 }
 
-pub fn new_delayed_reader(reader: Box<dyn Read>, buffer_size: usize) -> impl Read {
+pub fn new_delayed_reader(reader: impl Read, buffer_size: usize) -> impl Read {
     DelayedReader {
         reader: reader,
         buffer: vec![0; buffer_size],
@@ -30,7 +30,7 @@ pub fn new_delayed_reader(reader: Box<dyn Read>, buffer_size: usize) -> impl Rea
     }
 }
 
-impl Read for DelayedReader {
+impl<R: Read> Read for DelayedReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
 
         if !self.err.is_none() {
@@ -38,7 +38,7 @@ impl Read for DelayedReader {
         }
 
         // if we are completely drained, return io.EOF
-        if  self.is_eof {
+        if self.is_eof {
             return Ok(0);
         }       
 
