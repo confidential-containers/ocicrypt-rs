@@ -99,39 +99,22 @@ impl Pkcs11UriWrapped {
     // whether a PIN has been provided at all so that an error code returned by
     // this function indicates that the PIN value could not be retrieved.
     pub fn pin(&self) -> Result<String> {
-        match &self.p11uri.query_attributes.pin_value {
-            Some(x) => return Ok(x.to_string()),
-            None => {}
+        if let Some(pv) = &self.p11uri.query_attributes.pin_value {
+            return Ok(pv.to_string());
         }
-        match &self.p11uri.query_attributes.pin_source {
-            Some(v) => {
-                let pinuri = &v.parse::<Uri>()?;
-                let p = match pinuri.scheme_str() {
-                    Some(x) => x,
-                    None => return Err(anyhow!("")),
-                };
-                match p {
-                    "" | "file" => {
-                        if !std::path::Path::new(pinuri.path()).is_absolute() {
-                            return Err(anyhow!("PIN URI path {} is not absolute", pinuri.path()));
-                        }
-                        let pin = std::fs::read_to_string(pinuri.path())?;
-                        return Ok(pin);
+        if let Some(ps) = &self.p11uri.query_attributes.pin_source {
+            let pinuri = &ps.parse::<Uri>()?;
+            match pinuri.scheme_str() {
+                Some("") | Some("file") => {
+                    if !std::path::Path::new(pinuri.path()).is_absolute() {
+                        return Err(anyhow!("PIN URI path {} is not absolute", pinuri.path()));
                     }
-                    _ => {
-                        let ss = pinuri.scheme_str();
-                        match ss {
-                            Some(s) => {
-                                return Err(anyhow!("PIN URI scheme {} is not supported", s))
-                            }
-                            None => return Err(anyhow!("failed to get scheme from pin URI")),
-                        }
-                    }
+                    return Ok(std::fs::read_to_string(pinuri.path())?);
                 }
+                Some(s) => return Err(anyhow!("PIN URI scheme {} is not supported", s)),
+                None => return Err(anyhow!("failed to get scheme from pin URI")),
             }
-            None => {}
         }
-        // FIXME error
         Err(anyhow!("Neither pin-source nor pin-value are available"))
     }
 
