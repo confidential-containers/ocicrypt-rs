@@ -140,7 +140,7 @@ impl Pkcs11UriWrapped {
     // module path is used to match a module containing what is set in the
     // attribute module-name.
     pub fn module(&self) -> Result<String> {
-        let searchdirs_tmp: Vec<String>; // FIXME
+        let searchdirs_tmp: Vec<String>;
         let searchdirs: &Vec<String>;
 
         if let Some(mp) = &self.p11uri.query_attributes.module_path {
@@ -150,11 +150,11 @@ impl Pkcs11UriWrapped {
                 if self.is_allowed_path(&mp, &self.allowed_module_paths)? {
                     return Ok(mp.to_string());
                 }
-                return Err(anyhow!(""));
+                return Err(anyhow!("module-path '{}' is not allowed by policy", mp));
             }
             if !info.is_dir() {
                 // it's a symlink
-                return Err(anyhow!(""));
+                return Err(anyhow!("module-path '{}' points to an invalid file type", mp));
             }
             // it's a dir
             searchdirs_tmp = vec![mp.to_string()];
@@ -164,7 +164,7 @@ impl Pkcs11UriWrapped {
         }
 
         let module_name = match &self.p11uri.query_attributes.module_name {
-            Some(mn) => mn.to_lowercase(),
+            Some(mn) => mn,
             None => return Err(anyhow!("")),
         };
 
@@ -175,31 +175,28 @@ impl Pkcs11UriWrapped {
             };
             for file_result in file_results {
                 let file = match file_result {
-                    Ok(f) => f,
+                    Ok(f) => match f.file_name().into_string() {
+                        Ok(ff) => ff,
+                        Err(e) => continue,
+                    },
                     Err(e) => continue,
                 };
-                let file_lower = match file.file_name().into_string() {
-                    Ok(f) => f.to_lowercase(),
-                    Err(e) => continue,
-                };
-                let idx = match file_lower.find(&module_name) {
+                let idx = match file.find(module_name) {
                     Some(i) => i,
                     None => continue,
                 };
-                // We require that file_lower ends with module_name or that
+                // We require that file ends with module_name or that
                 // a suffix follows so that softhsm will not match
                 // libsofthsm2.so but only libsofthsm.so
-                // FIXME: replace with idiomatic rust
-                if file_lower.len() == idx + module_name.len()
-                    || file_lower.as_bytes()[idx + module_name.len()] == b'.'
+                if file.len() == idx + module_name.len()
+                    || file.as_bytes()[idx + module_name.len()] == b'.'
                 {
-                    let f = std::path::Path::new(dir).join(file.file_name());
-                    // TODO
-                    let fstr = f.as_path().display().to_string();
-                    if self.is_allowed_path(&fstr, &self.allowed_module_paths)? {
-                        return Ok(fstr);
+                    let pathbuf = std::path::Path::new(dir).join(file);
+                    let pathname = pathbuf.as_path().display().to_string();
+                    if self.is_allowed_path(&pathname, &self.allowed_module_paths)? {
+                        return Ok(pathname);
                     }
-                    return Err(anyhow!(""));
+                    return Err(anyhow!("module '{}' is not allowed by policy", pathname));
                 }
             }
         }
