@@ -154,7 +154,10 @@ impl Pkcs11UriWrapped {
             }
             if !info.is_dir() {
                 // it's a symlink
-                return Err(anyhow!("module-path '{}' points to an invalid file type", mp));
+                return Err(anyhow!(
+                    "module-path '{}' points to an invalid file type",
+                    mp
+                ));
             }
             // it's a dir
             searchdirs_tmp = vec![mp.to_string()];
