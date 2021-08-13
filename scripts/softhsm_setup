@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-# For the license, see the LICENSE file in the root directory.
+# Copyright The ocicrypt Authors.
+# SPDX-License-Identifier: Apache-2.0
 
 # This script may not work with softhsm2 2.0.0 but with >= 2.2.0
 

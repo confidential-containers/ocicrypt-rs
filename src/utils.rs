@@ -1,3 +1,6 @@
+// Copyright The ocicrypt Authors.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::keywrap::pkcs11::Pkcs11KeyFileObject;
 use crate::pkcs11_uri_wrapped::Pkcs11UriWrapped;
 use anyhow::{anyhow, Result};

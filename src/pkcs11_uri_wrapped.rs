@@ -1,3 +1,6 @@
+// Copyright The ocicrypt Authors.
+// SPDX-License-Identifier: Apache-2.0
+
 //
 // FIXME is_allowed_path(), module(), these extra fields that had to be put
 // into Pkcs11UriWrapped, etc. are all based on the  the golang version of

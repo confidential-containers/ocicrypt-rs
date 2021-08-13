@@ -1,3 +1,6 @@
+// Copyright The ocicrypt Authors.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::config::{
     get_default_module_directories_yaml, parse_pkcs11_config_file, CryptoConfig, DecryptConfig,
     EncryptConfig, Pkcs11Config,
