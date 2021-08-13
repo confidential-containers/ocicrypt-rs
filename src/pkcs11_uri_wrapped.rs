@@ -66,31 +66,25 @@ impl Pkcs11UriWrapped {
         &self.module_directories
     }
 
+    // Check if a path is allowed.
     pub fn is_allowed_path(&self, path: &String, allowed_paths: &Vec<String>) -> Result<bool> {
+        // case 1: if any module is allowed, it's allowed
         if self.allow_any_module {
             return Ok(true);
         }
         for allowed_path in allowed_paths {
             if allowed_path == path {
-                // exact filename match
+                // case 2: path is an exact match with an allowed path
                 return Ok(true);
             }
-            // FIXME: replace with idiomatic rust
-            let ap_bytes = allowed_path.as_bytes();
-            let last_byte: u8 = ap_bytes[ap_bytes.len() - 1];
-            if last_byte == b'/' && path.starts_with(allowed_path) {
-                // allowed_path no subdirectory is allowed
-                let p_bytes = path.as_bytes();
-                let some_slice = &p_bytes[ap_bytes.len()..];
-                let mut has_separator = false;
-                for b in some_slice {
-                    if *b as char == std::path::MAIN_SEPARATOR {
-                        has_separator = true;
-                        break;
+            // case 3: path matches some allowed path, and path has more
+            // characters beyond /. As long as there are no more
+            // subdirectories, it's allowed.
+            if allowed_path.ends_with("/") {
+                if let Some(suffix) = path.strip_prefix(allowed_path) {
+                    if !suffix.contains(std::path::MAIN_SEPARATOR) {
+                        return Ok(true);
                     }
-                }
-                if !has_separator {
-                    return Ok(true);
                 }
             }
         }
