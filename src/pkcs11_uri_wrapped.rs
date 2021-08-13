@@ -165,7 +165,7 @@ impl Pkcs11UriWrapped {
 
         let module_name = match &self.p11uri.query_attributes.module_name {
             Some(mn) => mn,
-            None => return Err(anyhow!("")),
+            None => return Err(anyhow!("module-name attribute is not set")),
         };
 
         for dir in searchdirs {
