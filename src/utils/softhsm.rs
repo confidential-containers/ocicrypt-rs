@@ -1,5 +1,5 @@
 use std::process::{Command, Stdio};
-use anyhow::{Result};
+use anyhow::{anyhow, Result};
 use std::{fs, str};
 
 
@@ -24,10 +24,9 @@ impl SoftHSMSetup {
 
         let output = match child.wait_with_output() {
             Ok(o) => o,
-            Err(_) => {
+            Err(e) => {
                 fs::remove_dir_all(self.statedir.clone())?;
-                // return Err("");
-                return Ok(String::new())            
+                return Err(anyhow!("{} setup failed", softhsm_setup));
             }
         };
 
@@ -35,8 +34,7 @@ impl SoftHSMSetup {
 
         if !output_string.contains("pkcs11:") {
             fs::remove_dir_all(self.statedir.clone())?;
-            // return Err(0) -- change to Err !!
-            return Ok(String::new())            
+            return Err(anyhow!("Could not find pkcs11 URI in output")); 
         }
 
         return Ok(String::from(output_string.strip_suffix("\n ").unwrap()))
@@ -66,6 +64,5 @@ impl SoftHSMSetup {
         fs::remove_dir_all(self.statedir.clone())?;
         Ok(())
     }
-
 
 }
