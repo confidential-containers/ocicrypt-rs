@@ -343,7 +343,7 @@ impl Pkcs11Config {
         if std::path::Path::new(&p).exists() {
             return parse_config_file(p.to_str().unwrap().to_string());
         }
-        Err(anyhow!(""))
+        Err(anyhow!("Path does not exist: {:?}", p))
     }
 
     fn get_default_crypto_config_opts(&self) -> Result<Pkcs11Config> {
@@ -359,12 +359,19 @@ impl Pkcs11Config {
         parse_pkcs11_config_file(config.as_bytes())
     }
 
+    // This was used by helpers/parse_helpers.go in the original
+    // implementation. Keep for now until we decide it's not needed.
+    #[allow(dead_code)]
     fn get_user_pkcs11_config(&self) -> Result<Pkcs11Config> {
-        let empty_config = Pkcs11Config {
-            module_directories: vec![],
-            allowed_module_paths: vec![],
+        match self.get_configuration() {
+            Ok(c) => return Ok(c),
+            Err(_) => {
+                return Ok(Pkcs11Config {
+                    module_directories: vec![],
+                    allowed_module_paths: vec![],
+                })
+            }
         };
-        Ok(self.get_configuration()?)
     }
 }
 

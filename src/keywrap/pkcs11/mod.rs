@@ -1,19 +1,13 @@
 // Copyright The ocicrypt Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::config::{
-    get_default_module_directories_yaml, parse_pkcs11_config_file, CryptoConfig, DecryptConfig,
-    EncryptConfig, Pkcs11Config,
-};
+use crate::config::{parse_pkcs11_config_file, DecryptConfig, EncryptConfig, Pkcs11Config};
 use crate::keywrap::KeyWrapper;
 use crate::pkcs11_uri_wrapped::Pkcs11UriWrapped;
-use crate::softhsm::SoftHSMSetup;
 use crate::utils::{
-    decrypt_pkcs11, encrypt_multiple, parse_private_key, parse_public_key, KeyType,
+    decrypt_pkcs11, encrypt_multiple, parse_private_key, parse_public_key, Pkcs11KeyType,
 };
 use anyhow::{anyhow, Result};
-use pkcs11_uri::Pkcs11Uri;
-use rsa::RsaPublicKey;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -46,7 +40,8 @@ impl KeyWrapper for Pkcs11KeyWrapper {
             }
         };
 
-        let pkcs11_recipients: Vec<KeyType> = add_pub_keys(&decrypt_config_pubkeys, &pubkeys)?;
+        let pkcs11_recipients: Vec<Pkcs11KeyType> =
+            add_pub_keys(&decrypt_config_pubkeys, &pubkeys)?;
 
         if pkcs11_recipients.is_empty() {
             return Ok(Vec::new());
@@ -63,15 +58,15 @@ impl KeyWrapper for Pkcs11KeyWrapper {
         let p11conf_opt = p11conf_from_params(&dc.param)?;
 
         // Parse the private keys.
-        // Then filter for just the "pkfo" (Pkcs11KeyFileObject) variants,
+        // Then filter for just the "PKFO" (Pkcs11KeyFileObject) variants,
         // and update the module dirs and allowed modules paths if appropriate
         let pkcs11_keys: Vec<Pkcs11KeyFileObject> = priv_keys
             .iter()
             .map(|key| parse_private_key(&key, &vec![], "PKCS11".to_string()))
-            .collect::<Result<Vec<KeyType>>>()?
+            .collect::<Result<Vec<Pkcs11KeyType>>>()?
             .into_iter()
             .filter_map(|key| {
-                if let KeyType::pkfo(mut p) = key {
+                if let Pkcs11KeyType::PKFO(mut p) = key {
                     if let Some(ref p11conf) = p11conf_opt {
                         p.uriw.set_module_directories(&p11conf.module_directories);
                         p.uriw
@@ -113,20 +108,20 @@ fn p11conf_from_params(
     Ok(None)
 }
 
-fn add_pub_keys(dc: &DecryptConfig, pubkeys: &Vec<Vec<u8>>) -> Result<Vec<KeyType>> {
+fn add_pub_keys(dc: &DecryptConfig, pubkeys: &Vec<Vec<u8>>) -> Result<Vec<Pkcs11KeyType>> {
     if pubkeys.is_empty() {
         return Ok(vec![]);
     }
     let p11conf_opt = p11conf_from_params(&dc.param)?;
     // parse and collect keys pkcs11 keys.
     // also update the module dirs and allowed module paths if appropriate
-    let pkcs11_keys: Vec<KeyType> = pubkeys
+    let pkcs11_keys: Vec<Pkcs11KeyType> = pubkeys
         .iter()
         .map(|key| parse_public_key(key, "PKCS11".to_string()))
         .collect::<Result<Vec<_>>>()?
         .into_iter()
         .map(|mut key| {
-            if let KeyType::pkfo(ref mut p) = key {
+            if let Pkcs11KeyType::PKFO(ref mut p) = key {
                 if let Some(ref p11conf) = p11conf_opt {
                     p.uriw.set_module_directories(&p11conf.module_directories);
                     p.uriw
@@ -142,6 +137,8 @@ fn add_pub_keys(dc: &DecryptConfig, pubkeys: &Vec<Vec<u8>>) -> Result<Vec<KeyTyp
 #[cfg(test)]
 mod kw_tests {
     use super::*;
+    use crate::config::{get_default_module_directories_yaml, CryptoConfig};
+    use crate::softhsm::SoftHSMSetup;
 
     const SOFTHSM_SETUP: &str = "scripts/softhsm_setup";
 
@@ -169,7 +166,9 @@ mod kw_tests {
             }
         }
 
-        shsm.run_softhsm_teardown(&SOFTHSM_SETUP.to_string());
+        assert!(shsm
+            .run_softhsm_teardown(&SOFTHSM_SETUP.to_string())
+            .is_ok());
     }
 
     #[test]
@@ -193,7 +192,6 @@ mod kw_tests {
         let pkcs11_key_wrapper = Pkcs11KeyWrapper {};
         let dc = DecryptConfig::default();
         assert!(pkcs11_key_wrapper.private_keys(&dc.param).is_none());
-        // TODO: test positive case (is_some)
     }
 
     #[test]
@@ -208,12 +206,6 @@ mod kw_tests {
         let recipients = pkcs11_key_wrapper.recipients("".to_string()).unwrap();
         assert!(recipients.len() == 1);
         assert!(recipients[0] == "[pkcs11]");
-    }
-
-    fn load_data_path() -> String {
-        let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("data");
-        path.to_str().unwrap().to_string()
     }
 
     fn get_pkcs11_config_yaml() -> Result<Vec<u8>> {

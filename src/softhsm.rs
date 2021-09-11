@@ -5,8 +5,6 @@ use anyhow::{anyhow, Result};
 use std::process::Command;
 use tempdir::TempDir;
 
-use std::{thread, time};
-
 const TEMPDIR_PREFIX: &str = "ocicrypt-rs";
 
 pub struct SoftHSMSetup {
@@ -112,13 +110,12 @@ mod softhsm_tests {
         let path_to_script = env!("CARGO_MANIFEST_DIR").to_string() + "/scripts/softhsm_setup";
         let rv = shsm_setup.run_softhsm_setup(&path_to_script);
         match rv {
-            Ok(o) => (),
-            Err(e) => assert!(false),
+            Ok(_) => (),
+            Err(_) => assert!(false),
         };
     }
 
-    //#[test]
-    // FIXME commenting out for now b/c it's slow
+    #[test]
     fn test_run_softhsm_get_pubkey() {
         let shsm_setup = SoftHSMSetup::new().unwrap();
         let path_to_script = env!("CARGO_MANIFEST_DIR").to_string() + "/scripts/softhsm_setup";
@@ -126,8 +123,8 @@ mod softhsm_tests {
         // call run_softhsm_setup() first
         let rv = shsm_setup.run_softhsm_setup(&path_to_script);
         match rv {
-            Ok(o) => (),
-            Err(e) => assert!(false),
+            Ok(_) => (),
+            Err(_) => assert!(false),
         };
 
         let res = shsm_setup.run_softhsm_get_pubkey(&path_to_script).unwrap();
@@ -143,8 +140,8 @@ mod softhsm_tests {
         // call run_softhsm_setup() first
         let rv = shsm_setup.run_softhsm_setup(&path_to_script);
         match rv {
-            Ok(o) => (),
-            Err(e) => assert!(false),
+            Ok(_) => (),
+            Err(_) => assert!(false),
         };
 
         shsm_setup.run_softhsm_teardown(&path_to_script).unwrap();

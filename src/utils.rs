@@ -4,10 +4,9 @@
 use crate::keywrap::pkcs11::Pkcs11KeyFileObject;
 use crate::pkcs11_uri_wrapped::Pkcs11UriWrapped;
 use anyhow::{anyhow, Result};
-use http::Uri;
 use pkcs11_uri::Pkcs11Uri;
 use rand::rngs::OsRng;
-use rsa::{pkcs8::FromPublicKey, PaddingScheme, PublicKey, RsaPrivateKey, RsaPublicKey};
+use rsa::{pkcs8::FromPublicKey, PaddingScheme, PublicKey, RsaPublicKey};
 use sha1::Sha1;
 use sha2::Sha256;
 use std::collections::HashMap;
@@ -17,8 +16,7 @@ extern crate serde_yaml;
 
 // OAEPDefaultHash defines the default hash used for OAEP encryption; this
 // cannot be changed
-// FIXME sha256?
-static OAEP_DEFAULT_HASH: &str = "sha1";
+pub static OAEP_DEFAULT_HASH: &str = "sha1";
 
 // Pkcs11KeyFile describes the format of the pkcs11 (private) key file.
 // It also carries pkcs11 module-related environment variables that are
@@ -38,10 +36,9 @@ struct Pkcs11KeyFileModule {
     env: HashMap<String, String>,
 }
 
-// FIXME rename
-pub enum KeyType {
-    rpk(RsaPublicKey),
-    pkfo(Pkcs11KeyFileObject),
+pub enum Pkcs11KeyType {
+    RPK(RsaPublicKey),
+    PKFO(Pkcs11KeyFileObject),
 }
 
 // A Pkcs11Blob holds the encrypted blobs for all recipients.
@@ -95,24 +92,24 @@ fn parse_pkcs11_private_key_yaml(yaml: &Vec<u8>, _prefix: String) -> Result<Pkcs
 
 // Try to parse a public key in DER format first and PEM format after,
 // returning an error if the parsing failed
-pub fn parse_public_key(pubkey: &Vec<u8>, prefix: String) -> Result<KeyType> {
-    // TODO: handle x509.ParsePKIXPublicKey(pubKey)
-    //              x509.ParsePKIXPublicKey(block.Bytes)
-    //              parseJWKPublicKey(pubKey, prefix)
-    let res: KeyType;
+pub fn parse_public_key(pubkey: &Vec<u8>, prefix: String) -> Result<Pkcs11KeyType> {
+    // FIXME: handle x509.ParsePKIXPublicKey(pubKey)
+    //               x509.ParsePKIXPublicKey(block.Bytes)
+    //               parseJWKPublicKey(pubKey, prefix)
+    let res: Pkcs11KeyType;
     let a = RsaPublicKey::from_public_key_pem(&String::from_utf8_lossy(pubkey));
     match a {
         Ok(o) => {
-            res = KeyType::rpk(o);
+            res = Pkcs11KeyType::RPK(o);
         }
-        Err(e) => {
+        Err(_e) => {
             let key = parse_pkcs11_public_key_yaml(pubkey, prefix);
             match key {
                 Ok(k) => {
-                    res = KeyType::pkfo(k);
+                    res = Pkcs11KeyType::PKFO(k);
                 }
                 Err(e) => {
-                    return Err(anyhow!(""));
+                    return Err(anyhow!("parsing pkcs11 yaml failed: {}", e));
                 }
             }
         }
@@ -124,20 +121,18 @@ pub fn parse_public_key(pubkey: &Vec<u8>, prefix: String) -> Result<KeyType> {
 // returning an error if the parsing failed.
 pub fn parse_private_key(
     privkey: &Vec<u8>,
-    privkey_password: &Vec<u8>,
+    _privkey_password: &Vec<u8>,
     prefix: String,
-) -> Result<KeyType> {
-    // FIXME handle the der and pem formats... will need to check if
-    // RsaPrivateKey can do it.
-    // FIXME need to handle at least some form of private key and not just yaml
-    let res: KeyType;
+) -> Result<Pkcs11KeyType> {
+    // FIXME: handle key types other than just pkcs11.
+    let res: Pkcs11KeyType;
     let key = parse_pkcs11_private_key_yaml(privkey, prefix);
     match key {
         Ok(k) => {
-            res = KeyType::pkfo(k);
+            res = Pkcs11KeyType::PKFO(k);
         }
         Err(e) => {
-            return Err(anyhow!(""));
+            return Err(anyhow!("parsing pkcs11 yaml failed: {}", e));
         }
     }
     Ok(res)
@@ -154,7 +149,6 @@ fn set_env_vars(env: &HashMap<String, String>) -> Option<std::env::Vars> {
     let oldenv = std::env::vars();
     for (key, value) in env {
         std::env::set_var(key, value);
-        // FIXME ? is there no way to check set-var's return code?
     }
     Some(oldenv)
 }
@@ -169,8 +163,10 @@ fn pkcs11_open_session(
     let flags = pkcs11::types::CKF_SERIAL_SESSION | pkcs11::types::CKF_RW_SESSION;
     let session = p11ctx.open_session(slotid, flags, None, None)?;
     if !pin.is_empty() {
-        if let Err(e) = p11ctx.login(session, pkcs11::types::CKU_USER, Some(&pin)) {
-            p11ctx.close_session(session);
+        if let Err(_) = p11ctx.login(session, pkcs11::types::CKU_USER, Some(&pin)) {
+            if let Err(_) = p11ctx.close_session(session) {
+                return Err(anyhow!("Failed to close session"));
+            }
             return Err(anyhow!("Could not log in to device"));
         }
     }
@@ -187,7 +183,7 @@ fn pkcs11_uri_get_login_parameters(
 ) -> Result<(String, String, Option<u64>)> {
     if private_key_operation {
         if !p11uriw.has_pin() {
-            return Err(anyhow!(""));
+            return Err(anyhow!("Missing PIN for private key operation"));
         }
     }
     // some devices require a PIN to find a *public* key object, others don't
@@ -201,11 +197,11 @@ fn pkcs11_uri_get_login_parameters(
 fn pkcs11_uri_get_key_id_and_label(p11uri: &Pkcs11Uri) -> Result<(&Vec<u8>, &String)> {
     let object_id = match p11uri.path_attributes.object_id.as_ref() {
         Some(x) => x,
-        None => return Err(anyhow!("")),
+        None => return Err(anyhow!("'object_id' attribute not found in pkcs11 URI")),
     };
     let object_label = match p11uri.path_attributes.object_label.as_ref() {
         Some(x) => x,
-        None => return Err(anyhow!("")),
+        None => return Err(anyhow!("'object_label' attribute not found in pkcs11 URI")),
     };
     Ok((object_id, object_label))
 }
@@ -227,9 +223,6 @@ fn pkcs11_uri_login(
 
     match slotid {
         Some(sid) => {
-            if sid > 0xffffffff {
-                return Err(anyhow!(""));
-            }
             let session = pkcs11_open_session(&p11ctx, sid, pin)?;
             return Ok((p11ctx, session));
         }
@@ -238,7 +231,11 @@ fn pkcs11_uri_login(
 
             let tokenlabel = match p11uri.path_attributes.token_label.as_ref() {
                 Some(x) => x,
-                None => return Err(anyhow!("")),
+                None => {
+                    return Err(anyhow!(
+                        "Missing 'token_label' attribute since 'slot_id' was not given"
+                    ))
+                }
             };
 
             for slot in slots {
@@ -294,14 +291,12 @@ fn find_object(
         if !msg.is_empty() {
             msg += " and "
         }
-        // TODO rust pathescape?
-        //msg += url.PathEscape(object_id)
-        //msg += &String::from_utf8_lossy(object_id);
+        msg += &String::from_utf8_lossy(object_id);
     }
 
     match p11ctx.find_objects_init(session, &template) {
         Ok(_) => {}
-        Err(e) => {
+        Err(_) => {
             return Err(anyhow!("find_objects_init failed"));
         }
     }
@@ -310,7 +305,7 @@ fn find_object(
 
     match p11ctx.find_objects_final(session) {
         Ok(_) => {}
-        Err(e) => {
+        Err(_) => {
             return Err(anyhow!("find_objects_final failed"));
         }
     }
@@ -410,11 +405,11 @@ fn rsa_public_encrypt_oaep(pubkey: &RsaPublicKey, plaintext: &[u8]) -> Result<(V
     match oaephash.to_lowercase().as_str() {
         "sha1" => {
             hashalg = "sha1";
-            padding = PaddingScheme::new_oaep::<sha1::Sha1>();
+            padding = PaddingScheme::new_oaep::<Sha1>();
         }
         "sha256" => {
             hashalg = "sha256";
-            padding = PaddingScheme::new_oaep::<sha2::Sha256>();
+            padding = PaddingScheme::new_oaep::<Sha256>();
         }
         _ => {
             return Err(anyhow!("Unsupported OAEP hash '{}'", oaephash));
@@ -435,8 +430,7 @@ fn public_encrypt_oaep(
     // TODO
     // defer restoreEnv(oldenv)
     // defer pkcs11Logout(p11ctx, session)
-
-    let oldenv = set_env_vars(&pub_key.uriw.env_map());
+    let _oldenv = set_env_vars(&pub_key.uriw.env_map());
 
     let p11ctx_session = pkcs11_uri_login(&pub_key.uriw, false)?;
     let p11ctx = p11ctx_session.0;
@@ -456,7 +450,12 @@ fn public_encrypt_oaep(
 
     let oaephash = match std::env::var("OCICRYPT_OAEP_HASHALG") {
         Ok(x) => x,
-        Err(_) => return Err(anyhow!("")),
+        Err(e) => {
+            return Err(anyhow!(
+                "Failed to get OCICRYPT_OAEP_HASHALG env var: {}",
+                e
+            ))
+        }
     };
 
     let oaep_hashalg = oaep_hashalg(oaephash)?;
@@ -468,12 +467,7 @@ fn public_encrypt_oaep(
 
     let mech = pkcs11::types::CK_MECHANISM {
         mechanism: pkcs11::types::CKM_RSA_PKCS_OAEP,
-        // FIXME this can't be right
         pParameter: oaep_p as *mut pkcs11::types::CK_VOID,
-        // FIXME: This should be something like "oaep.len()", but oaep is of
-        // type CK_RSA_PKCS_OAEP_PARAMS. Do we want the size of the struct
-        // here?  (Alternatively, do we want the size of pSourceData, i.e.
-        // ulSourceDataLen, or something else?)
         ulParameterLen: std::mem::size_of_val(&oaep) as u64,
     };
     let _ = p11ctx.encrypt_init(session, &mech, p11_pub_key)?;
@@ -499,31 +493,17 @@ fn public_encrypt_oaep(
 //     [...]
 //   ]
 // }
-pub fn encrypt_multiple(pub_keys: &Vec<KeyType>, data: &[u8]) -> Result<Vec<u8>> {
+pub fn encrypt_multiple(pub_keys: &Vec<Pkcs11KeyType>, data: &[u8]) -> Result<Vec<u8>> {
     let mut pkcs11_blob: Pkcs11Blob = Pkcs11Blob {
         version: 0,
         recipients: Vec::new(),
     };
     for pub_key in pub_keys {
-        // FIXME
-        let ciphertext_hashalg: (Vec<u8>, String);
-        match pub_key {
-            KeyType::rpk(r) => {
-                ciphertext_hashalg = rsa_public_encrypt_oaep(r, data)?;
-            }
-            KeyType::pkfo(p) => {
-                ciphertext_hashalg = public_encrypt_oaep(p, data)?;
-            }
-        }
-        let ciphertext = ciphertext_hashalg.0;
-        let mut hashalg = ciphertext_hashalg.1;
+        let (ciphertext, hashalg): (Vec<u8>, String) = match pub_key {
+            Pkcs11KeyType::RPK(r) => rsa_public_encrypt_oaep(r, data)?,
+            Pkcs11KeyType::PKFO(p) => public_encrypt_oaep(p, data)?,
+        };
 
-        // FIXME ? I think the golang version sort of noop'd here and don't
-        // know why
-        if hashalg == OAEP_DEFAULT_HASH {
-            // FIXME why?
-            hashalg = "".to_string();
-        }
         let recipient = Pkcs11Recipient {
             version: 0,
             blob: base64::encode(ciphertext),
@@ -544,7 +524,7 @@ fn private_decrypt_oaep(
     // TODO
     // defer restoreEnv(oldenv)
     // defer pkcs11Logout(p11ctx, session)
-    let oldenv = set_env_vars(&priv_key.uriw.env_map());
+    let _oldenv = set_env_vars(&priv_key.uriw.env_map());
 
     let p11ctx_session = pkcs11_uri_login(&priv_key.uriw, true)?;
     let p11ctx = p11ctx_session.0;
@@ -604,30 +584,32 @@ pub fn decrypt_pkcs11(
 ) -> Result<Vec<u8>> {
     let pkcs11_blob: Pkcs11Blob = serde_json::from_slice(pkcs11blobstr)?;
     if pkcs11_blob.version != 0 {
-        return Err(anyhow!(""));
+        return Err(anyhow!(
+            "Found Pkcs11Blob with version {} but maximum supported version is 0.",
+            pkcs11_blob.version
+        ));
     }
     // since we do trial and error, collect all encountered errors
     let mut errs = String::from("");
 
     for recipient in pkcs11_blob.recipients {
         if recipient.version != 0 {
-            return Err(anyhow!(""));
+            return Err(anyhow!(
+                "Found Pkcs11Recipient with version {} but maximum supported version is 0.",
+                recipient.version
+            ));
         }
 
         let ciphertext = match base64::decode(recipient.blob) {
             Ok(c) => {
                 if c.is_empty() {
-                    // FIXME append error message of e
-                    //"Base64 decoding failed: %s\n", err
-                    errs += "1";
+                    errs += "Base64 decoding yielded empty ciphertext\n";
                     continue;
                 }
                 c
             }
-            Err(_) => {
-                // FIXME append error message of e
-                //"Base64 decoding failed: %s\n", err
-                errs += "2";
+            Err(e) => {
+                errs += &format!("Base64 decoding failed: {}\n", e);
                 continue;
             }
         };
@@ -639,12 +621,7 @@ pub fn decrypt_pkcs11(
                     return Ok(x);
                 }
                 Err(e) => {
-                    // TODO
-                    //if uri, err2 := privKeyObj.Uri.Format(); err2 == nil {
-                    //    errs += fmt.Sprintf("%s : %s\n", uri, err)
-                    //} else {
-                    //    errs += fmt.Sprintf("%s\n", err)
-                    //}
+                    errs += &format!("{:?} : {}", priv_key.uriw.p11uri, e);
                 }
             }
         }

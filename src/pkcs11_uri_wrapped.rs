@@ -1,17 +1,18 @@
 // Copyright The ocicrypt Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-//
-// FIXME is_allowed_path(), module(), these extra fields that had to be put
-// into Pkcs11UriWrapped, etc. are all based on the  the golang version of
-// pkcs11-uri. They may need to be PRs for pkcs11-uri rust package.
-//
-
 use anyhow::{anyhow, Result};
 use http::Uri;
 use pkcs11_uri::Pkcs11Uri;
 use std::collections::HashMap;
 
+// A wrapper struct for Pkcs11Uri.
+// The goloang pkcs11-uri package defines extra struct members and functions
+// that are not part of the rust pkcs11-uri implementation.
+// Thus, Pkcs11UriWraped adds these extra struct members and implements
+// the relevant functions.
+// This could potentially be moved to the pkcs11-uri rust package in the
+// future.
 pub struct Pkcs11UriWrapped {
     pub p11uri: Pkcs11Uri,
     // directories to search for pkcs11 modules
@@ -171,15 +172,15 @@ impl Pkcs11UriWrapped {
         for dir in searchdirs {
             let file_results = match std::fs::read_dir(dir) {
                 Ok(fr) => fr,
-                Err(e) => continue,
+                Err(_) => continue,
             };
             for file_result in file_results {
                 let file = match file_result {
                     Ok(f) => match f.file_name().into_string() {
                         Ok(ff) => ff,
-                        Err(e) => continue,
+                        Err(_) => continue,
                     },
-                    Err(e) => continue,
+                    Err(_) => continue,
                 };
                 let idx = match file.find(module_name) {
                     Some(i) => i,
