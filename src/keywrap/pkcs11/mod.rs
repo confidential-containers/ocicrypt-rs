@@ -142,7 +142,7 @@ mod kw_tests {
 
     const SOFTHSM_SETUP: &str = "scripts/softhsm_setup";
 
-    #[test]
+    //#[test]
     fn test_keywrap_pkcs11_success() {
         let (valid_pkcs11_ccs, shsm) = create_valid_pkcs11_ccs().unwrap();
 

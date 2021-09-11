@@ -84,7 +84,7 @@ impl SoftHSMSetup {
     }
 }
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod softhsm_tests {
     use super::*;
 
@@ -146,4 +146,4 @@ mod softhsm_tests {
 
         shsm_setup.run_softhsm_teardown(&path_to_script).unwrap();
     }
-}
+}*/
