@@ -578,7 +578,10 @@ fn private_decrypt_oaep(
 //     } ,
 //     [...]
 // }
-pub fn decrypt_pkcs11(priv_keys: &[Box<Pkcs11KeyFileObject>], pkcs11blobstr: &[u8]) -> Result<Vec<u8>> {
+pub fn decrypt_pkcs11(
+    priv_keys: &[Box<Pkcs11KeyFileObject>],
+    pkcs11blobstr: &[u8],
+) -> Result<Vec<u8>> {
     let pkcs11_blob: Pkcs11Blob = serde_json::from_slice(pkcs11blobstr)?;
     if pkcs11_blob.version != 0 {
         return Err(anyhow!(
