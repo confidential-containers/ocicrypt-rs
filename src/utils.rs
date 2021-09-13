@@ -39,7 +39,7 @@ struct Pkcs11KeyFileModule {
 
 pub enum Pkcs11KeyType {
     RPK(RsaPublicKey),
-    PKFO(Pkcs11KeyFileObject),
+    PKFO(Box<Pkcs11KeyFileObject>),
 }
 
 // A Pkcs11Blob holds the encrypted blobs for all recipients.
@@ -107,7 +107,7 @@ pub fn parse_public_key(pubkey: &[u8], prefix: String) -> Result<Pkcs11KeyType> 
             let key = parse_pkcs11_public_key_yaml(pubkey, prefix);
             match key {
                 Ok(k) => {
-                    res = Pkcs11KeyType::PKFO(k);
+                    res = Pkcs11KeyType::PKFO(Box::new(k));
                 }
                 Err(e) => {
                     return Err(anyhow!("parsing pkcs11 yaml failed: {}", e));
@@ -130,7 +130,7 @@ pub fn parse_private_key(
     let key = parse_pkcs11_private_key_yaml(privkey, prefix);
     match key {
         Ok(k) => {
-            res = Pkcs11KeyType::PKFO(k);
+            res = Pkcs11KeyType::PKFO(Box::new(k));
         }
         Err(e) => {
             return Err(anyhow!("parsing pkcs11 yaml failed: {}", e));
@@ -578,7 +578,7 @@ fn private_decrypt_oaep(
 //     } ,
 //     [...]
 // }
-pub fn decrypt_pkcs11(priv_keys: &[Pkcs11KeyFileObject], pkcs11blobstr: &[u8]) -> Result<Vec<u8>> {
+pub fn decrypt_pkcs11(priv_keys: &[Box<Pkcs11KeyFileObject>], pkcs11blobstr: &[u8]) -> Result<Vec<u8>> {
     let pkcs11_blob: Pkcs11Blob = serde_json::from_slice(pkcs11blobstr)?;
     if pkcs11_blob.version != 0 {
         return Err(anyhow!(
