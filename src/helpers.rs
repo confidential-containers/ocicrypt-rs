@@ -155,6 +155,7 @@ fn process_private_keyfiles(keyfiles_and_pwds: Vec<String>) -> Result<[Vec<Vec<u
                 // metadata/cert files exists
                 continue;
             }
+            */
         }
     }
 
