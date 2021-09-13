@@ -142,20 +142,20 @@ fn process_private_keyfiles(keyfiles_and_pwds: Vec<String>) -> Result<[Vec<Vec<u
             // FIXME: Validity checks. See golang's
             // parse_helpers.processPrivateKeyFiles and utils.IsPrivateKey,
             // .IsPkcs11PrivateKey, and .IsGPGPrivateKeyRing.
-            if true {
-                pkcs11_yamls.push(contents.clone());
+            pkcs11_yamls.push(contents.clone());
+            //if true {
+            //    pkcs11_yamls.push(contents.clone());
             //} else if false {
             //    priv_keys.push(contents.clone());
             //    priv_keys_passwords.push(_password.clone());
             //} else if false {
             //    gpg_secret_key_ring_files.push(contents.clone());
             //    gpg_secret_key_passwords.push(_password.clone());
-            } else {
-                // ignore if file is not recognized, so as not to error if additional
-                // metadata/cert files exists
-                continue;
-            }
-            */
+            //} else {
+            //    // ignore if file is not recognized, so as not to error if additional
+            //    // metadata/cert files exists
+            //    continue;
+            //}
         }
     }
 
