@@ -40,8 +40,7 @@ impl KeyWrapper for Pkcs11KeyWrapper {
             }
         };
 
-        let pkcs11_recipients: Vec<Pkcs11KeyType> =
-            add_pub_keys(decrypt_config_pubkeys, &pubkeys)?;
+        let pkcs11_recipients: Vec<Pkcs11KeyType> = add_pub_keys(decrypt_config_pubkeys, &pubkeys)?;
 
         if pkcs11_recipients.is_empty() {
             return Ok(Vec::new());

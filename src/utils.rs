@@ -9,8 +9,8 @@ use rand::rngs::OsRng;
 use rsa::{pkcs8::FromPublicKey, PaddingScheme, PublicKey, RsaPublicKey};
 use sha1::Sha1;
 use sha2::Sha256;
-use std::collections::HashMap;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 extern crate base64;
 extern crate serde_yaml;
@@ -163,7 +163,11 @@ fn pkcs11_open_session(
 ) -> Result<pkcs11::types::CK_SESSION_HANDLE> {
     let flags = pkcs11::types::CKF_SERIAL_SESSION | pkcs11::types::CKF_RW_SESSION;
     let session = p11ctx.open_session(slotid, flags, None, None)?;
-    if !pin.is_empty() && p11ctx.login(session, pkcs11::types::CKU_USER, Some(&pin)).is_err() {
+    if !pin.is_empty()
+        && p11ctx
+            .login(session, pkcs11::types::CKU_USER, Some(&pin))
+            .is_err()
+    {
         if p11ctx.close_session(session).is_err() {
             return Err(anyhow!("Failed to close session"));
         }
@@ -308,14 +312,12 @@ fn find_object(
     }
 
     match obj_handles.len().cmp(&1) {
-        Ordering::Less =>
-            Err(anyhow!("Could not find any object with {}", msg)),
-        Ordering::Greater =>
-            Err(anyhow!(
-                "There are too many (={}) keys with {}",
-                obj_handles.len(),
-                msg
-            )),
+        Ordering::Less => Err(anyhow!("Could not find any object with {}", msg)),
+        Ordering::Greater => Err(anyhow!(
+            "There are too many (={}) keys with {}",
+            obj_handles.len(),
+            msg
+        )),
         Ordering::Equal => Ok(obj_handles[0]),
     }
 }
@@ -576,10 +578,7 @@ fn private_decrypt_oaep(
 //     } ,
 //     [...]
 // }
-pub fn decrypt_pkcs11(
-    priv_keys: &[Pkcs11KeyFileObject],
-    pkcs11blobstr: &[u8],
-) -> Result<Vec<u8>> {
+pub fn decrypt_pkcs11(priv_keys: &[Pkcs11KeyFileObject], pkcs11blobstr: &[u8]) -> Result<Vec<u8>> {
     let pkcs11_blob: Pkcs11Blob = serde_json::from_slice(pkcs11blobstr)?;
     if pkcs11_blob.version != 0 {
         return Err(anyhow!(

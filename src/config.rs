@@ -363,12 +363,10 @@ impl Pkcs11Config {
     fn get_user_pkcs11_config(&self) -> Result<Pkcs11Config> {
         match self.get_configuration() {
             Ok(c) => Ok(c),
-            Err(_) => {
-                Ok(Pkcs11Config {
-                    module_directories: vec![],
-                    allowed_module_paths: vec![],
-                })
-            }
+            Err(_) => Ok(Pkcs11Config {
+                module_directories: vec![],
+                allowed_module_paths: vec![],
+            }),
         }
     }
 }

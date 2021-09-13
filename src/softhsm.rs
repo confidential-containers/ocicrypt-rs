@@ -19,9 +19,7 @@ impl SoftHSMSetup {
     pub fn new() -> Result<Self> {
         // create a temporary folder (deleted when instance goes out of scope)
         let statedir_folder = TempDir::new(TEMPDIR_PREFIX)?;
-        Ok(SoftHSMSetup {
-            statedir_folder,
-        })
+        Ok(SoftHSMSetup { statedir_folder })
     }
 
     // Returns the path to the softhsm configuration file.
@@ -49,12 +47,10 @@ impl SoftHSMSetup {
                 let res = res[idx..].trim_end_matches(trim_me);
                 Ok(res.to_string())
             }
-            None => {
-                Err(anyhow!(
-                    "Failed to find 'pkcs11:' in output 
+            None => Err(anyhow!(
+                "Failed to find 'pkcs11:' in output 
                                        from `softhsm setup`"
-                ))
-            }
+            )),
         }
     }
 
