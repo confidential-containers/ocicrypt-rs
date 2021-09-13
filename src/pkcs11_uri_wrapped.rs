@@ -49,17 +49,16 @@ impl Pkcs11UriWrapped {
     }
 
     // Set the search directories for pkcs11 modules
-    //func (uri *Pkcs11URI) SetModuleDirectories(moduleDirectories []string) {
-    pub fn set_module_directories(&mut self, module_directories: &Vec<String>) {
-        self.module_directories = module_directories.clone();
+    pub fn set_module_directories(&mut self, module_directories: &[String]) {
+        self.module_directories = module_directories.to_vec();
     }
 
     // Set allowed module paths to restrict access to modules.
     // Directory entries must end with a '/'.
     // All other ones are assumed to be file entries.
     // Allowed modules are filtered by string matching.
-    pub fn set_allowed_module_paths(&mut self, allowed_module_paths: &Vec<String>) {
-        self.allowed_module_paths = allowed_module_paths.clone();
+    pub fn set_allowed_module_paths(&mut self, allowed_module_paths: &[String]) {
+        self.allowed_module_paths = allowed_module_paths.to_vec();
     }
 
     // Get the search directories for pkcs11 modules
@@ -68,7 +67,7 @@ impl Pkcs11UriWrapped {
     }
 
     // Check if a path is allowed.
-    pub fn is_allowed_path(&self, path: &String, allowed_paths: &Vec<String>) -> Result<bool> {
+    pub fn is_allowed_path(&self, path: &str, allowed_paths: &[String]) -> Result<bool> {
         // case 1: if any module is allowed, it's allowed
         if self.allow_any_module {
             return Ok(true);
@@ -81,7 +80,7 @@ impl Pkcs11UriWrapped {
             // case 3: path matches some allowed path, and path has more
             // characters beyond /. As long as there are no more
             // subdirectories, it's allowed.
-            if allowed_path.ends_with("/") {
+            if allowed_path.ends_with('/') {
                 if let Some(suffix) = path.strip_prefix(allowed_path) {
                     if !suffix.contains(std::path::MAIN_SEPARATOR) {
                         return Ok(true);
@@ -145,7 +144,7 @@ impl Pkcs11UriWrapped {
             let info = std::fs::metadata(mp)?;
             if info.is_file() {
                 // it's a file
-                if self.is_allowed_path(&mp, &self.allowed_module_paths)? {
+                if self.is_allowed_path(mp, &self.allowed_module_paths)? {
                     return Ok(mp.to_string());
                 }
                 return Err(anyhow!("module-path '{}' is not allowed by policy", mp));

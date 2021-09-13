@@ -116,10 +116,10 @@ fn process_pwd_string(pwd_string: String) -> Result<Vec<u8>> {
 // - <filename>:<password>
 // - provider:<...>
 fn process_private_keyfiles(keyfiles_and_pwds: Vec<String>) -> Result<[Vec<Vec<u8>>; 6]> {
-    let mut gpg_secret_key_ring_files = vec![];
-    let mut gpg_secret_key_passwords = vec![];
-    let mut priv_keys = vec![];
-    let mut priv_keys_passwords = vec![];
+    let gpg_secret_key_ring_files = vec![];
+    let gpg_secret_key_passwords = vec![];
+    let priv_keys = vec![];
+    let priv_keys_passwords = vec![];
     let mut pkcs11_yamls = vec![];
     let mut key_providers = vec![];
 
@@ -131,10 +131,10 @@ fn process_private_keyfiles(keyfiles_and_pwds: Vec<String>) -> Result<[Vec<Vec<u
         }
 
         if let Some(index) = keyfile_and_pwd.find(':') {
-            let mut password: Vec<u8> = Vec::new();
+            let mut _password: Vec<u8> = Vec::new();
 
             if index > 0 {
-                password = process_pwd_string(keyfile_and_pwd[index + 1..].to_string())?;
+                _password = process_pwd_string(keyfile_and_pwd[index + 1..].to_string())?;
             }
 
             let contents = fs::read(&keyfile_and_pwd[..index])?;
@@ -144,12 +144,12 @@ fn process_private_keyfiles(keyfiles_and_pwds: Vec<String>) -> Result<[Vec<Vec<u
             // .IsPkcs11PrivateKey, and .IsGPGPrivateKeyRing.
             if true {
                 pkcs11_yamls.push(contents.clone());
-            } else if false {
-                priv_keys.push(contents.clone());
-                priv_keys_passwords.push(password.clone());
-            } else if false {
-                gpg_secret_key_ring_files.push(contents.clone());
-                gpg_secret_key_passwords.push(password.clone());
+            //} else if false {
+            //    priv_keys.push(contents.clone());
+            //    priv_keys_passwords.push(_password.clone());
+            //} else if false {
+            //    gpg_secret_key_ring_files.push(contents.clone());
+            //    gpg_secret_key_passwords.push(_password.clone());
             } else {
                 // ignore if file is not recognized, so as not to error if additional
                 // metadata/cert files exists

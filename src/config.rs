@@ -362,14 +362,14 @@ impl Pkcs11Config {
     #[allow(dead_code)]
     fn get_user_pkcs11_config(&self) -> Result<Pkcs11Config> {
         match self.get_configuration() {
-            Ok(c) => return Ok(c),
+            Ok(c) => Ok(c),
             Err(_) => {
-                return Ok(Pkcs11Config {
+                Ok(Pkcs11Config {
                     module_directories: vec![],
                     allowed_module_paths: vec![],
                 })
             }
-        };
+        }
     }
 }
 
@@ -398,7 +398,7 @@ fn get_default_module_directories() -> Result<Vec<String>> {
 
     // Debian directory: /usr/lib/(x86_64|aarch64|arm|powerpc64le|s390x)-linux-gnu/
     let (hosttype, ostype, q) = get_host_and_os_type()?;
-    if hosttype.len() > 0 {
+    if !hosttype.is_empty() {
         let dir = format!("/usr/lib/{}-{}-{}/", hosttype, ostype, q);
         dirs.push(dir);
     }
@@ -423,8 +423,8 @@ fn get_host_and_os_type() -> Result<(String, String, String)> {
                 "s390x" => "s390x",
                 _ => "",
             };
-            return Ok(("linux".to_string(), arch.to_string(), "gnu".to_string()));
+            Ok(("linux".to_string(), arch.to_string(), "gnu".to_string()))
         }
-        _ => return Ok(("".to_string(), "".to_string(), "".to_string())),
+        _ => Ok(("".to_string(), "".to_string(), "".to_string())),
     }
 }

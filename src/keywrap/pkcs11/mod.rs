@@ -41,13 +41,13 @@ impl KeyWrapper for Pkcs11KeyWrapper {
         };
 
         let pkcs11_recipients: Vec<Pkcs11KeyType> =
-            add_pub_keys(&decrypt_config_pubkeys, &pubkeys)?;
+            add_pub_keys(decrypt_config_pubkeys, &pubkeys)?;
 
         if pkcs11_recipients.is_empty() {
             return Ok(Vec::new());
         }
 
-        Ok(encrypt_multiple(&pkcs11_recipients, opts_data)?)
+        encrypt_multiple(&pkcs11_recipients, opts_data)
     }
 
     fn unwrap_keys(&self, dc: &DecryptConfig, annotation: &[u8]) -> Result<Vec<u8>> {
@@ -62,7 +62,7 @@ impl KeyWrapper for Pkcs11KeyWrapper {
         // and update the module dirs and allowed modules paths if appropriate
         let pkcs11_keys: Vec<Pkcs11KeyFileObject> = priv_keys
             .iter()
-            .map(|key| parse_private_key(&key, &vec![], "PKCS11".to_string()))
+            .map(|key| parse_private_key(key, &[], "PKCS11".to_string()))
             .collect::<Result<Vec<Pkcs11KeyType>>>()?
             .into_iter()
             .filter_map(|key| {
@@ -77,7 +77,7 @@ impl KeyWrapper for Pkcs11KeyWrapper {
                 None
             })
             .collect();
-        Ok(decrypt_pkcs11(&pkcs11_keys, annotation)?)
+        decrypt_pkcs11(&pkcs11_keys, annotation)
     }
 
     fn annotation_id(&self) -> &str {
@@ -108,7 +108,7 @@ fn p11conf_from_params(
     Ok(None)
 }
 
-fn add_pub_keys(dc: &DecryptConfig, pubkeys: &Vec<Vec<u8>>) -> Result<Vec<Pkcs11KeyType>> {
+fn add_pub_keys(dc: &DecryptConfig, pubkeys: &[Vec<u8>]) -> Result<Vec<Pkcs11KeyType>> {
     if pubkeys.is_empty() {
         return Ok(vec![]);
     }
@@ -159,10 +159,10 @@ mod kw_tests {
                     let ud = kw.unwrap_keys(&dc, &wk).unwrap();
                     assert_eq!(data, ud);
                 } else {
-                    assert!(false);
+                    panic!();
                 }
             } else {
-                assert!(false);
+                panic!();
             }
         }
 

@@ -10,6 +10,7 @@ use rsa::{pkcs8::FromPublicKey, PaddingScheme, PublicKey, RsaPublicKey};
 use sha1::Sha1;
 use sha2::Sha256;
 use std::collections::HashMap;
+use std::cmp::Ordering;
 
 extern crate base64;
 extern crate serde_yaml;
@@ -68,7 +69,7 @@ pub fn parse_pkcs11_uri(uri: &str) -> Result<Pkcs11Uri> {
 // pkcs11:
 //  - uri : <pkcs11 uri>
 // An error is returned if the pkcs11 URI is malformed
-pub fn parse_pkcs11_key_file(yaml_bytes: &Vec<u8>) -> Result<Pkcs11KeyFileObject> {
+pub fn parse_pkcs11_key_file(yaml_bytes: &[u8]) -> Result<Pkcs11KeyFileObject> {
     let p11_key_file: Pkcs11KeyFile = serde_yaml::from_slice(yaml_bytes)?;
     let p11_uri = parse_pkcs11_uri(&p11_key_file.pkcs11.uri)?;
     let mut p11uriw = Pkcs11UriWrapped::new(p11_uri);
@@ -77,14 +78,14 @@ pub fn parse_pkcs11_key_file(yaml_bytes: &Vec<u8>) -> Result<Pkcs11KeyFileObject
 }
 
 // Parse the input byte array as a pkcs11 key file yaml
-fn parse_pkcs11_public_key_yaml(yaml: &Vec<u8>, _prefix: String) -> Result<Pkcs11KeyFileObject> {
+fn parse_pkcs11_public_key_yaml(yaml: &[u8], _prefix: String) -> Result<Pkcs11KeyFileObject> {
     // if the URI does not have enough attributes, we will throw an error when
     // decrypting
     parse_pkcs11_key_file(yaml)
 }
 
 // Parse the input byte array as pkcs11 key file (yaml format)
-fn parse_pkcs11_private_key_yaml(yaml: &Vec<u8>, _prefix: String) -> Result<Pkcs11KeyFileObject> {
+fn parse_pkcs11_private_key_yaml(yaml: &[u8], _prefix: String) -> Result<Pkcs11KeyFileObject> {
     // if the URI does not have enough attributes, we will throw an error when
     // decrypting
     parse_pkcs11_key_file(yaml)
@@ -92,7 +93,7 @@ fn parse_pkcs11_private_key_yaml(yaml: &Vec<u8>, _prefix: String) -> Result<Pkcs
 
 // Try to parse a public key in DER format first and PEM format after,
 // returning an error if the parsing failed
-pub fn parse_public_key(pubkey: &Vec<u8>, prefix: String) -> Result<Pkcs11KeyType> {
+pub fn parse_public_key(pubkey: &[u8], prefix: String) -> Result<Pkcs11KeyType> {
     // FIXME: handle x509.ParsePKIXPublicKey(pubKey)
     //               x509.ParsePKIXPublicKey(block.Bytes)
     //               parseJWKPublicKey(pubKey, prefix)
@@ -120,8 +121,8 @@ pub fn parse_public_key(pubkey: &Vec<u8>, prefix: String) -> Result<Pkcs11KeyTyp
 // Attempt to parse a private key in DER format first and PEM format after,
 // returning an error if the parsing failed.
 pub fn parse_private_key(
-    privkey: &Vec<u8>,
-    _privkey_password: &Vec<u8>,
+    privkey: &[u8],
+    _privkey_password: &[u8],
     prefix: String,
 ) -> Result<Pkcs11KeyType> {
     // FIXME: handle key types other than just pkcs11.
@@ -162,13 +163,11 @@ fn pkcs11_open_session(
 ) -> Result<pkcs11::types::CK_SESSION_HANDLE> {
     let flags = pkcs11::types::CKF_SERIAL_SESSION | pkcs11::types::CKF_RW_SESSION;
     let session = p11ctx.open_session(slotid, flags, None, None)?;
-    if !pin.is_empty() {
-        if let Err(_) = p11ctx.login(session, pkcs11::types::CKU_USER, Some(&pin)) {
-            if let Err(_) = p11ctx.close_session(session) {
-                return Err(anyhow!("Failed to close session"));
-            }
-            return Err(anyhow!("Could not log in to device"));
+    if !pin.is_empty() && p11ctx.login(session, pkcs11::types::CKU_USER, Some(&pin)).is_err() {
+        if p11ctx.close_session(session).is_err() {
+            return Err(anyhow!("Failed to close session"));
         }
+        return Err(anyhow!("Could not log in to device"));
     }
     Ok(session)
 }
@@ -181,10 +180,8 @@ fn pkcs11_uri_get_login_parameters(
     p11uriw: &Pkcs11UriWrapped,
     private_key_operation: bool,
 ) -> Result<(String, String, Option<u64>)> {
-    if private_key_operation {
-        if !p11uriw.has_pin() {
-            return Err(anyhow!("Missing PIN for private key operation"));
-        }
+    if private_key_operation && !p11uriw.has_pin() {
+        return Err(anyhow!("Missing PIN for private key operation"));
     }
     // some devices require a PIN to find a *public* key object, others don't
     let pin = p11uriw.pin()?;
@@ -224,7 +221,7 @@ fn pkcs11_uri_login(
     match slotid {
         Some(sid) => {
             let session = pkcs11_open_session(&p11ctx, sid, pin)?;
-            return Ok((p11ctx, session));
+            Ok((p11ctx, session))
         }
         None => {
             let slots = p11ctx.get_slot_list(true)?;
@@ -252,12 +249,12 @@ fn pkcs11_uri_login(
                 let session = pkcs11_open_session(&p11ctx, slot, pin)?;
                 return Ok((p11ctx, session));
             }
-            if pin.len() > 0 {
+            if !pin.is_empty() {
                 return Err(anyhow!(
                     "Could not create session to any slot and/or log in"
                 ));
             }
-            return Err(anyhow!("Could not create session to any slot"));
+            Err(anyhow!("Could not create session to any slot"))
         }
     }
 }
@@ -268,8 +265,8 @@ fn find_object(
     p11ctx: &pkcs11::Ctx,
     session: pkcs11::types::CK_SESSION_HANDLE,
     class: u64,
-    object_id: &Vec<u8>,
-    object_label: &String,
+    object_id: &[u8],
+    object_label: &str,
 ) -> Result<pkcs11::types::CK_OBJECT_HANDLE> {
     let mut msg = "".to_string();
 
@@ -310,16 +307,17 @@ fn find_object(
         }
     }
 
-    if obj_handles.len() > 1 {
-        return Err(anyhow!(
-            "There are too many (={}) keys with {}",
-            obj_handles.len(),
-            msg
-        ));
-    } else if obj_handles.len() == 1 {
-        return Ok(obj_handles[0]);
+    match obj_handles.len().cmp(&1) {
+        Ordering::Less =>
+            Err(anyhow!("Could not find any object with {}", msg)),
+        Ordering::Greater =>
+            Err(anyhow!(
+                "There are too many (={}) keys with {}",
+                obj_handles.len(),
+                msg
+            )),
+        Ordering::Equal => Ok(obj_handles[0]),
     }
-    Err(anyhow!("Could not find any object with {}", msg))
 }
 
 fn construct_oaep_params() -> Result<(
@@ -371,7 +369,7 @@ fn oaep_hashalg(oaephash: String) -> Result<(pkcs11::types::CK_RSA_PKCS_OAEP_PAR
     };
     Ok(tmp)
 }
-fn oaep(hashalg: &String) -> Result<pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS> {
+fn oaep(hashalg: &str) -> Result<pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS> {
     let oaep_params = construct_oaep_params()?;
     let oaep_sha1_params = oaep_params.0;
     let oaep_sha256_params = oaep_params.1;
@@ -430,7 +428,7 @@ fn public_encrypt_oaep(
     // TODO
     // defer restoreEnv(oldenv)
     // defer pkcs11Logout(p11ctx, session)
-    let _oldenv = set_env_vars(&pub_key.uriw.env_map());
+    let _oldenv = set_env_vars(pub_key.uriw.env_map());
 
     let p11ctx_session = pkcs11_uri_login(&pub_key.uriw, false)?;
     let p11ctx = p11ctx_session.0;
@@ -493,7 +491,7 @@ fn public_encrypt_oaep(
 //     [...]
 //   ]
 // }
-pub fn encrypt_multiple(pub_keys: &Vec<Pkcs11KeyType>, data: &[u8]) -> Result<Vec<u8>> {
+pub fn encrypt_multiple(pub_keys: &[Pkcs11KeyType], data: &[u8]) -> Result<Vec<u8>> {
     let mut pkcs11_blob: Pkcs11Blob = Pkcs11Blob {
         version: 0,
         recipients: Vec::new(),
@@ -517,14 +515,14 @@ pub fn encrypt_multiple(pub_keys: &Vec<Pkcs11KeyType>, data: &[u8]) -> Result<Ve
 // Use a pkcs11 URI describing a private key to OAEP decrypt a ciphertext
 fn private_decrypt_oaep(
     priv_key: &Pkcs11KeyFileObject,
-    ciphertext: &Vec<u8>,
-    hashalg: &String,
+    ciphertext: &[u8],
+    hashalg: &str,
 ) -> Result<Vec<u8>> {
     // FIXME remove boilerplate similar to public_encrypt_oaep
     // TODO
     // defer restoreEnv(oldenv)
     // defer pkcs11Logout(p11ctx, session)
-    let _oldenv = set_env_vars(&priv_key.uriw.env_map());
+    let _oldenv = set_env_vars(priv_key.uriw.env_map());
 
     let p11ctx_session = pkcs11_uri_login(&priv_key.uriw, true)?;
     let p11ctx = p11ctx_session.0;
@@ -557,7 +555,7 @@ fn private_decrypt_oaep(
 
     let _ = p11ctx.decrypt_init(session, &mech, p11_priv_key)?;
 
-    let plaintext = p11ctx.decrypt(session, &ciphertext)?;
+    let plaintext = p11ctx.decrypt(session, ciphertext)?;
 
     Ok(plaintext)
 }
@@ -579,7 +577,7 @@ fn private_decrypt_oaep(
 //     [...]
 // }
 pub fn decrypt_pkcs11(
-    priv_keys: &Vec<Pkcs11KeyFileObject>,
+    priv_keys: &[Pkcs11KeyFileObject],
     pkcs11blobstr: &[u8],
 ) -> Result<Vec<u8>> {
     let pkcs11_blob: Pkcs11Blob = serde_json::from_slice(pkcs11blobstr)?;

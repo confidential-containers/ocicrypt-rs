@@ -20,7 +20,7 @@ impl SoftHSMSetup {
         // create a temporary folder (deleted when instance goes out of scope)
         let statedir_folder = TempDir::new(TEMPDIR_PREFIX)?;
         Ok(SoftHSMSetup {
-            statedir_folder: statedir_folder,
+            statedir_folder,
         })
     }
 
@@ -29,13 +29,12 @@ impl SoftHSMSetup {
         Ok(format!(
             "{}/softhsm2.conf",
             self.statedir_folder.path().to_string_lossy().to_string()
-        )
-        .to_string())
+        ))
     }
 
     // Invokes `softhsm_setup setup` and returns the public key that was
     // displayed
-    pub fn run_softhsm_setup(&self, softhsm_setup: &String) -> Result<String> {
+    pub fn run_softhsm_setup(&self, softhsm_setup: &str) -> Result<String> {
         let res = Command::new(softhsm_setup)
             .arg("setup")
             .env(
@@ -48,19 +47,19 @@ impl SoftHSMSetup {
             Some(idx) => {
                 let trim_me: &[_] = &[' ', '\n'];
                 let res = res[idx..].trim_end_matches(trim_me);
-                return Ok(res.to_string());
+                Ok(res.to_string())
             }
             None => {
-                return Err(anyhow!(
+                Err(anyhow!(
                     "Failed to find 'pkcs11:' in output 
                                        from `softhsm setup`"
                 ))
             }
-        };
+        }
     }
 
     // Invokes `softhsm_setup getpubkey` and returns the public key
-    pub fn run_softhsm_get_pubkey(&self, softhsm_setup: &String) -> Result<String> {
+    pub fn run_softhsm_get_pubkey(&self, softhsm_setup: &str) -> Result<String> {
         let res = Command::new(softhsm_setup)
             .arg("getpubkey")
             .env(
@@ -72,7 +71,7 @@ impl SoftHSMSetup {
     }
 
     // Invokes `softhsm_setup teardown`
-    pub fn run_softhsm_teardown(&self, softhsm_setup: &String) -> Result<()> {
+    pub fn run_softhsm_teardown(&self, softhsm_setup: &str) -> Result<()> {
         let _ = Command::new(softhsm_setup)
             .arg("teardown")
             .env(
@@ -92,7 +91,7 @@ mod softhsm_tests {
     fn test_new() {
         match SoftHSMSetup::new() {
             Ok(_) => (),
-            Err(_) => assert!(false),
+            Err(_) => panic!(),
         }
     }
 
@@ -111,7 +110,7 @@ mod softhsm_tests {
         let rv = shsm_setup.run_softhsm_setup(&path_to_script);
         match rv {
             Ok(_) => (),
-            Err(_) => assert!(false),
+            Err(_) => panic!(),
         };
     }
 
@@ -124,7 +123,7 @@ mod softhsm_tests {
         let rv = shsm_setup.run_softhsm_setup(&path_to_script);
         match rv {
             Ok(_) => (),
-            Err(_) => assert!(false),
+            Err(_) => panic!(),
         };
 
         let res = shsm_setup.run_softhsm_get_pubkey(&path_to_script).unwrap();
@@ -141,7 +140,7 @@ mod softhsm_tests {
         let rv = shsm_setup.run_softhsm_setup(&path_to_script);
         match rv {
             Ok(_) => (),
-            Err(_) => assert!(false),
+            Err(_) => panic!(),
         };
 
         shsm_setup.run_softhsm_teardown(&path_to_script).unwrap();
