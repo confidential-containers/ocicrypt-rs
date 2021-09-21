@@ -1,5 +1,5 @@
 use ::pem::parse;
-use der_parser::parse_der;
+use ::der_parser::parse_der;
 use std::collections::HashMap;
 use pkcs8::{FromPrivateKey};
 use openssl::x509::X509;
