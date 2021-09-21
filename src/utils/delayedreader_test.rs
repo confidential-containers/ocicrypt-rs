@@ -34,18 +34,18 @@ fn equal_slices(s1: &[u8], s2: &[u8]) -> bool {
     return true;
 }
 
-static EXP_RANGE_VAL: usize = 20;
-static RANGE_FROM_VAL: usize = 2;
-static RANGE_TO_VAL: usize = 32;
-
 #[test]
 fn test_delayed_reader() {
     let mut buf: Vec<u8> = Vec::with_capacity(10);
 
-    for buf_len in make_range_exp(EXP_RANGE_VAL) {
+    let exp_range_val: usize = 20;
+    let range_from_val: usize = 2;
+    let range_to_val: usize = 32;
+
+    for buf_len in make_range_exp(exp_range_val) {
         let obuf: Vec<u8> = Vec::with_capacity(buf_len);
 
-        for buf_size in make_range(RANGE_FROM_VAL, RANGE_TO_VAL) {
+        for buf_size in make_range(range_from_val, range_to_val) {
             let reader = BufReader::new(&obuf[..]);
             let mut dr = new_delayed_reader(reader, buf_size);
 
@@ -55,7 +55,6 @@ fn test_delayed_reader() {
                     Ok(n) => n,
                     Err(_) => panic!(),
                 };
-                // assert_ne!(n, 0);
 
                 ibuf.extend_from_slice(&buf[..n]);
                 if n == 0 { /* EOF */ 

@@ -1,6 +1,5 @@
 use std::io::{Write, Read, Result};
-use std::process::Command;
-use std::process::Stdio;
+use std::process::{Command, Stdio};
 
 // fill_buffer fills the given buffer with as many bytes from the reader as possible. 
 // It returns number of bytes read into the buffer (can be less than len(buffer)).
