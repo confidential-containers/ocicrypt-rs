@@ -26,6 +26,14 @@ base64-serde = "0.6"
 base64 = "0.13"
 lazy_static = ">=1.4"
 oci-distribution = "0.7"
+indexmap = { version = ">=1.7.0", features = ["std"] }
+pem = "0.8.3"
+openssl = ">=0.9.24"
+pkcs8 = ">=0.7.5"
+x509-parser = ">=0.10"
+pkix = "0.1.1"
+der-parser = "5.1.2"
+#rsa-pem = "0.3.0"
 
 [dev-dependencies]
 openssl = ">=0.10"
