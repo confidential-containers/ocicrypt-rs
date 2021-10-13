@@ -4,7 +4,7 @@
 use crate::config::{parse_pkcs11_config_file, DecryptConfig, EncryptConfig, Pkcs11Config};
 use crate::keywrap::KeyWrapper;
 use crate::pkcs11_uri_wrapped::Pkcs11UriWrapped;
-use crate::utils::{
+use crate::utils::pkcs11::{
     decrypt_pkcs11, encrypt_multiple, parse_private_key, parse_public_key, Pkcs11KeyType,
 };
 use anyhow::{anyhow, Result};
@@ -79,8 +79,8 @@ impl KeyWrapper for Pkcs11KeyWrapper {
         decrypt_pkcs11(&pkcs11_keys, annotation)
     }
 
-    fn annotation_id(&self) -> &str {
-        "org.opencontainers.image.enc.keys.pkcs11"
+    fn annotation_id(&self) -> String {
+        "org.opencontainers.image.enc.keys.pkcs11".to_string()
     }
 
     fn no_possible_keys(&self, dcparameters: &HashMap<String, Vec<Vec<u8>>>) -> bool {
