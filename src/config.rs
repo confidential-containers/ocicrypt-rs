@@ -2,13 +2,90 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use anyhow::{anyhow, Result};
+use serde::{de, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::BufReader;
+
+pub const OCICRYPT_ENVVARNAME: &str = "OCICRYPT_KEYPROVIDER_CONFIG";
 
 /// DecryptConfig wraps the Parameters map that holds the decryption key
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DecryptConfig {
     /// map holding 'privkeys', 'x509s', 'gpg-privatekeys'
+    #[serde(
+        rename = "Parameters",
+        serialize_with = "base64_hashmap_s",
+        deserialize_with = "base64_hashmap_d"
+    )]
     pub param: HashMap<String, Vec<Vec<u8>>>,
+}
+
+fn base64_enc(val: &[Vec<u8>]) -> Vec<String> {
+    let mut res_vec = vec![];
+    for x in val {
+        res_vec.push(base64::encode_config(x, base64::STANDARD));
+    }
+
+    res_vec
+}
+
+fn base64_hashmap_s<S>(
+    value: &HashMap<String, Vec<Vec<u8>>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut b64_encoded: HashMap<String, Vec<String>> = HashMap::default();
+    for (key, value) in value {
+        b64_encoded.insert(key.clone().to_string(), base64_enc(value));
+    }
+    b64_encoded.serialize(serializer)
+}
+
+fn base64_dec(val: &[String]) -> Result<Vec<Vec<u8>>, base64::DecodeError> {
+    let mut res_vec = vec![];
+    for x in val {
+        res_vec.push(base64::decode_config(x, base64::STANDARD).map_err(|e| e)?);
+    }
+
+    Ok(res_vec)
+}
+
+fn base64_hashmap_d<'de, D>(deserializer: D) -> Result<HashMap<String, Vec<Vec<u8>>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let b64_encoded: HashMap<String, Vec<String>> = serde::Deserialize::deserialize(deserializer)?;
+    b64_encoded
+        .iter()
+        .map(|(k, v)| -> Result<(String, Vec<Vec<u8>>), D::Error> {
+            Ok((k.clone(), base64_dec(v).map_err(de::Error::custom)?))
+        })
+        .collect()
+}
+
+/// Command describes the structure of command, it consist of path and args, where path defines the location of
+/// binary executable and args are passed on to the binary executable
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Command {
+    pub path: String,
+    pub args: Option<Vec<String>>,
+}
+
+/// KeyProviderAttrs describes the structure of key provider, it defines the different ways of invocation to key provider
+#[derive(Deserialize, Debug, Clone)]
+pub struct KeyProviderAttrs {
+    pub cmd: Option<Command>,
+    pub grpc: Option<String>,
+}
+
+/// OcicryptConfig represents the format of an ocicrypt_provider.conf config file
+#[derive(Deserialize)]
+pub struct OcicryptConfig {
+    #[serde(rename = "key-providers")]
+    pub key_providers: HashMap<String, KeyProviderAttrs>,
 }
 
 impl DecryptConfig {
@@ -95,12 +172,18 @@ impl DecryptConfig {
 /// EncryptConfig is the container image PGP encryption configuration holding
 /// the identifiers of those that will be able to decrypt the container and
 /// the PGP public keyring file data that contains their public keys.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct EncryptConfig {
     /// map holding 'gpg-recipients', 'gpg-pubkeyringfile', 'pubkeys', 'x509s'
+    #[serde(
+        rename = "Parameters",
+        serialize_with = "base64_hashmap_s",
+        deserialize_with = "base64_hashmap_d"
+    )]
     pub param: HashMap<String, Vec<Vec<u8>>>,
 
     /// Allow for adding wrapped keys to an encrypted layer
+    #[serde(rename = "DecryptConfig")]
     pub decrypt_config: Option<DecryptConfig>,
 }
 
@@ -189,9 +272,31 @@ pub struct CryptoConfig {
     pub decrypt_config: Option<DecryptConfig>,
 }
 
+impl OcicryptConfig {
+    fn from_file(filename: &str) -> Result<OcicryptConfig> {
+        let file = File::open(filename)?;
+        let reader = BufReader::new(file);
+
+        serde_json::from_reader(reader)
+            .map_err(|e| anyhow!("Error reading file {:?}", e.to_string()))
+    }
+
+    /// from_env tries to read the configuration file at the following locations
+    /// ${OCICRYPT_KEYPROVIDER_CONFIG} == "/etc/ocicrypt_keyprovider.json"
+    /// If no configuration file could be found or read a null pointer is returned
+    pub fn from_env(env: &str) -> Result<OcicryptConfig> {
+        // find file name from environment variable, ignore error if environment variable is not set.
+        let filename = std::env::var(env).map_err(|v| v)?;
+
+        OcicryptConfig::from_file(filename.as_str()).map_err(|e| e)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+    use std::path::PathBuf;
 
     #[test]
     fn test_decrypt_config() {
@@ -273,6 +378,50 @@ mod tests {
         cc.decrypt_config = Some(dc);
         assert!(cc.encrypt_config.is_some());
         assert!(cc.decrypt_config.is_some());
+    }
+
+    #[test]
+    fn test_ocicrypt_config() {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("data");
+        let test_conf_path = format!(
+            "{}/{}",
+            path.to_str().unwrap().to_string(),
+            "ocicrypt_config.json"
+        );
+        env::set_var("OCICRYPT_KEYPROVIDER_CONFIG", &test_conf_path);
+
+        let mut provider = HashMap::new();
+        let args: Vec<String> = Vec::default();
+        let attrs = KeyProviderAttrs {
+            cmd: Some(Command {
+                path: "/usr/lib/keyprovider-wrapkey".to_string(),
+                args: Some(args),
+            }),
+            grpc: None,
+        };
+        provider.insert(String::from("keyprovider1"), attrs);
+
+        assert!(OcicryptConfig::from_env(OCICRYPT_ENVVARNAME).is_ok());
+        let provider_unmarshalled = OcicryptConfig::from_env(OCICRYPT_ENVVARNAME)
+            .expect("Unable to read ocicrypt config file");
+        assert_eq!(
+            provider_unmarshalled
+                .key_providers
+                .get("keyprovider1")
+                .unwrap()
+                .cmd
+                .as_ref()
+                .unwrap()
+                .path,
+            provider
+                .get("keyprovider1")
+                .unwrap()
+                .cmd
+                .as_ref()
+                .unwrap()
+                .path
+        )
     }
 }
 
