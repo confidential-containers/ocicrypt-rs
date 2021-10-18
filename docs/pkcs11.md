@@ -1,6 +1,6 @@
-# Ocicrypt Pkcs11 (Experimental)
+# Ocicrypt-rs Pkcs11 (Experimental)
 
-Ocicrypt supports the use of an experimental pkcs11-based protocol. This allows the ability to encrypt a container image so that it can be decrypted by a key which resides in a Hardware Security Module (HSM). In this document, we will go through a tutorial on how to setup and use this capability with a software emulated HSM, SoftHSM. 
+Ocicrypt-rs supports the use of an experimental pkcs11-based protocol. This allows the ability to encrypt a container image so that it can be decrypted by a key which resides in a Hardware Security Module (HSM). In this document, we will go through a tutorial on how to setup and use this capability with a software emulated HSM, SoftHSM. 
 
 This tutorial is done on Ubuntu.
 
@@ -8,7 +8,7 @@ This tutorial is done on Ubuntu.
 
 ## Requirements
 
-On top of the generic ocicrypt requirements, install the following packages:
+On top of the generic ocicrypt-rs requirements, install the following packages:
 ```
 sudo apt install -y softhsm2 p11-kit gnutls-bin
 ```
@@ -148,18 +148,18 @@ pkcs11:model=SoftHSM%20v2;manufacturer=SoftHSM%20project;serial=ee777786c4a769fb
 ```
 
 
-# Setting up PKCS11 for ocicrypt
+# Setting up PKCS11 for ocicrypt-rs
 
 
-# Configuring pkcs11 modules for ocicrypt users
+# Configuring pkcs11 modules for ocicrypt-rs users
 
-In order to use pkcs11 with the ocicrypt library, there are several configuration and key conventions that need to be noted. 
+In order to use pkcs11 with the ocicrypt-rs library, there are several configuration and key conventions that need to be noted. 
 
-Encrypting/decrypting with ocicrypt's pkcs11 keywrap module consists of two parts. One is the metadata of the key to use for encryption/decryption (i.e. similar to how keys are passed in via using other ocicrypt protocols such as  jwe:, pkcs11:), and configuring the HSM modules on the host.
+Encrypting/decrypting with ocicrypt-rs's pkcs11 keywrap module consists of two parts. One is the metadata of the key to use for encryption/decryption (i.e. similar to how keys are passed in via using other ocicrypt-rs protocols such as  jwe:, pkcs11:), and configuring the HSM modules on the host.
 
 ## Creating pkcs11 key configuration. 
 
-This is the representation of the key that the key-wrap module will use to talk to the HSM. It can be passed in like any other protocol key, i.e. pkcs11:myPkcs11Key.yaml. Note that this key can act as a private key and public key for ocicrypt. It is also possible to encrypt with a regular public key (as was output in the above step when generating the key).
+This is the representation of the key that the key-wrap module will use to talk to the HSM. It can be passed in like any other protocol key, i.e. pkcs11:myPkcs11Key.yaml. Note that this key can act as a private key and public key for ocicrypt-rs. It is also possible to encrypt with a regular public key (as was output in the above step when generating the key).
 
 ```
 cat > myPkcs11Key.yaml <<EOF
@@ -173,29 +173,28 @@ EOF
 
 ## Configuring HSM modules
 
-Because communication with HSM modules are usually done with a external module, there is an additional configuration to tell the user of ocicrypt how to talk to the HSM modules on the host. This is also important to configure correctly so that only authorized modules are run. 
+Because communication with HSM modules are usually done with a external module, there is an additional configuration to tell the user of ocicrypt-rs how to talk to the HSM modules on the host. This is also important to configure correctly so that only authorized modules are run. 
 
 This configuration is done via an environment variable `OCICRPYT_CONFIG`. Here is the behavior of this configuration:
 - If the environment variable is not set, it indicates that no HSM modules should be allowed
-- If the environment variable is set to "internal", it uses policy that allows to access most pkcs11 modules. It holds default module search paths that should cover many distros ([details here](https://github.com/containers/ocicrypt/blob/2ddd51f10d6d15ce99e020ec35729ea741d32f2a/crypto/pkcs11/pkcs11helpers.go#L134))
-- Else, it is treated as a filepath, where it contains the configuration of where modules are, and which are allowed. More details on how to configure this can be seen [here](https://github.com/containers/ocicrypt/blob/master/config/pkcs11config/config.go#L38).
+- If the environment variable is set to "internal", it uses policy that allows to access most pkcs11 modules. It holds default module search paths that should cover many distros. 
+- Else, it is treated as a filepath, where it contains the configuration of where modules are, and which are allowed.
 
 
 
 # Encrpyting/Decrypting examples
 
-We will show how this can be used with users of ocicrypt. After performing the steps above, we are ready to encrypt/decrypt with the pkcs11 protocol. The capabilities that the tools provide will be:
+We will show how this can be used with users of ocicrypt-rs. After performing the steps above, we are ready to encrypt/decrypt with the pkcs11 protocol. The capabilities that the tools provide will be:
 
-- Encrypting an image with ocicrypt pkcs11 protocol using a public key (PEM)
-- Encrypting an image with ocicrypt pkcs11 protocol using a pkcs11 key configuration (requires HSM access)
-- Decrypting an image with ocicrypt pkcs11 protocol using a pkcs11 key configuration (requires HSM access)
+- Encrypting an image with ocicrypt-rs pkcs11 protocol using a public key (PEM)
+- Encrypting an image with ocicrypt-rs pkcs11 protocol using a pkcs11 key configuration (requires HSM access)
+- Decrypting an image with ocicrypt-rs pkcs11 protocol using a pkcs11 key configuration (requires HSM access)
 
-We will go through 3 consumers of the ocicrypt library.
+We will go through 3 consumers of the ocicrypt-rs library.
 - [containerd/imgcrypt](http://github.com/containerd/imgcrypt)
 - [skopeo](https://github.com/containers/skopeo)
 - [buildah](https://github.com/containers/buildah)
 
-NOTE: only builds that use ocicrypt v1.1.0 and above will have pkcs11 experimental support.
 
 
 We remember that we created two files above, pubkey.pem and `myPkcs11Key.yaml`. For the following command executions, we assume that the plaintext image has already been downloaded. We are using the image `docker.io/library/alpine:latest`.
