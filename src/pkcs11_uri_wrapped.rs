@@ -6,13 +6,13 @@ use http::Uri;
 use pkcs11_uri::Pkcs11Uri;
 use std::collections::HashMap;
 
-// A wrapper struct for Pkcs11Uri.
-// The goloang pkcs11-uri package defines extra struct members and functions
-// that are not part of the rust pkcs11-uri implementation.
-// Thus, Pkcs11UriWraped adds these extra struct members and implements
-// the relevant functions.
-// This could potentially be moved to the pkcs11-uri rust package in the
-// future.
+/// A wrapper struct for Pkcs11Uri.
+/// The goloang pkcs11-uri package defines extra struct members and functions
+/// that are not part of the rust pkcs11-uri implementation.
+/// Thus, Pkcs11UriWraped adds these extra struct members and implements
+/// the relevant functions.
+/// This could potentially be moved to the pkcs11-uri rust package in the
+/// future.
 pub struct Pkcs11UriWrapped {
     pub p11uri: Pkcs11Uri,
     // directories to search for pkcs11 modules
@@ -27,7 +27,7 @@ pub struct Pkcs11UriWrapped {
 }
 
 impl Pkcs11UriWrapped {
-    // Constructs a new Pkcs11UriWrapped instance
+    /// Construct a new Pkcs11UriWrapped instance.
     pub fn new(uri: Pkcs11Uri) -> Self {
         Pkcs11UriWrapped {
             p11uri: uri,
@@ -38,35 +38,35 @@ impl Pkcs11UriWrapped {
         }
     }
 
-    // Get the map of environment variables
+    /// Get the map of environment variables.
     pub fn env_map(&self) -> &HashMap<String, String> {
         &self.env
     }
 
-    // Set the environment variables for the pkcs11 module
+    /// Set the environment variables for the pkcs11 module.
     pub fn set_env_map(&mut self, env: HashMap<String, String>) {
         self.env = env;
     }
 
-    // Set the search directories for pkcs11 modules
+    /// Set the search directories for pkcs11 modules.
     pub fn set_module_directories(&mut self, module_directories: &[String]) {
         self.module_directories = module_directories.to_vec();
     }
 
-    // Set allowed module paths to restrict access to modules.
-    // Directory entries must end with a '/'.
-    // All other ones are assumed to be file entries.
-    // Allowed modules are filtered by string matching.
+    /// Set allowed module paths to restrict access to modules.
+    /// Directory entries must end with a '/'.
+    /// All other ones are assumed to be file entries.
+    /// Allowed modules are filtered by string matching.
     pub fn set_allowed_module_paths(&mut self, allowed_module_paths: &[String]) {
         self.allowed_module_paths = allowed_module_paths.to_vec();
     }
 
-    // Get the search directories for pkcs11 modules
+    /// Get the search directories for pkcs11 modules
     pub fn module_directories(&self) -> &Vec<String> {
         &self.module_directories
     }
 
-    // Check if a path is allowed.
+    /// Check if a path is allowed.
     pub fn is_allowed_path(&self, path: &str, allowed_paths: &[String]) -> Result<bool> {
         // case 1: if any module is allowed, it's allowed
         if self.allow_any_module {
@@ -91,10 +91,10 @@ impl Pkcs11UriWrapped {
         Ok(false)
     }
 
-    // Get the PIN from either the pin-value or pin-source attribute; a
-    // user may want to call HasPIN() before calling this function to determine
-    // whether a PIN has been provided at all so that an error code returned by
-    // this function indicates that the PIN value could not be retrieved.
+    /// Get the PIN from either the pin-value or pin-source attribute; a user
+    /// may want to call HasPIN() before calling this function to determine
+    /// whether a PIN has been provided at all so that an error code returned
+    /// by this function indicates that the PIN value could not be retrieved.
     pub fn pin(&self) -> Result<String> {
         if let Some(pv) = &self.p11uri.query_attributes.pin_value {
             return Ok(pv.to_string());
@@ -115,9 +115,9 @@ impl Pkcs11UriWrapped {
         Err(anyhow!("Neither pin-source nor pin-value are available"))
     }
 
-    // has_pin allows the user to check whether a PIN has been provided either by
-    // the pin-value or the pin-source attributes. It should be called before
-    // pin(), which may still fail getting the PIN from a file for example.
+    /// Check whether a PIN has been provided either by the pin-value or the
+    /// pin-source attributes. It should be called before pin(), which may
+    /// still fail to get the PIN from a file, for example.
     pub fn has_pin(&self) -> bool {
         match &self.p11uri.query_attributes.pin_value {
             Some(_x) => return true,
@@ -130,12 +130,12 @@ impl Pkcs11UriWrapped {
         false
     }
 
-    // Get the module to use or an error in case no module could be found.
-    // First the module-path is checked for whether it holds an absolute that
-    // can be read by the current user. If this is the case the module is
-    // returned. Otherwise either the module-path is used or the user-provided
-    // module path is used to match a module containing what is set in the
-    // attribute module-name.
+    /// Get the module to use. Return an error if no module could be found.
+    /// First the module-path is checked for whether it holds an absolute that
+    /// can be read by the current user. If this is the case the module is
+    /// returned. Otherwise either the module-path is used or the user-provided
+    /// module path is used to match a module containing what is set in the
+    /// attribute module-name.
     pub fn module(&self) -> Result<String> {
         let searchdirs_tmp: Vec<String>;
         let searchdirs: &Vec<String>;
