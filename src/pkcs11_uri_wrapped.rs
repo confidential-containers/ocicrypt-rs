@@ -119,15 +119,8 @@ impl Pkcs11UriWrapped {
     /// pin-source attributes. It should be called before pin(), which may
     /// still fail to get the PIN from a file, for example.
     pub fn has_pin(&self) -> bool {
-        match &self.p11uri.query_attributes.pin_value {
-            Some(_x) => return true,
-            None => {}
-        }
-        match &self.p11uri.query_attributes.pin_source {
-            Some(_x) => return true,
-            None => {}
-        }
-        false
+        self.p11uri.query_attributes.pin_value.is_some()
+            || self.p11uri.query_attributes.pin_source.is_some()
     }
 
     /// Get the module to use. Return an error if no module could be found.
