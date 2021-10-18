@@ -13,8 +13,8 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct Pkcs11KeyWrapper {}
 
-// Pkcs11KeyFileObject is a representation of the Pkcs11KeyFile with the pkcs11
-// URI wrapper as an object
+/// Pkcs11KeyFileObject is a representation of the Pkcs11KeyFile with the
+/// pkcs11 URI wrapper as a member
 pub struct Pkcs11KeyFileObject {
     pub uriw: Pkcs11UriWrapped,
 }
@@ -94,6 +94,7 @@ impl KeyWrapper for Pkcs11KeyWrapper {
     }
 }
 
+/// Helper function. Grabs the pkcs11-config from dcparameters, if it exists.
 fn p11conf_from_params(
     dcparameters: &HashMap<String, Vec<Vec<u8>>>,
 ) -> Result<Option<Pkcs11Config>> {
@@ -105,13 +106,14 @@ fn p11conf_from_params(
     Ok(None)
 }
 
+/// Helper function. Creates a Vec<Pkcs11KeyType> from the given pubkeys.
 fn add_pub_keys(dc: &DecryptConfig, pubkeys: &[Vec<u8>]) -> Result<Vec<Pkcs11KeyType>> {
     if pubkeys.is_empty() {
         return Ok(vec![]);
     }
     let p11conf_opt = p11conf_from_params(&dc.param)?;
-    // parse and collect keys pkcs11 keys.
-    // also update the module dirs and allowed module paths if appropriate
+    // Parse and collect pkcs11 keys.
+    // Also update the module dirs and allowed module paths, if appropriate.
     let pkcs11_keys: Vec<Pkcs11KeyType> = pubkeys
         .iter()
         .map(|key| parse_public_key(key, "PKCS11".to_string()))
