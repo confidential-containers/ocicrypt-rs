@@ -7,22 +7,24 @@ use tempdir::TempDir;
 
 const TEMPDIR_PREFIX: &str = "ocicrypt-rs";
 
+/// SoftHSMSetup is a struct and impl that acts as an interface to a
+/// softhsm helper script. The script simplifies interaction with softhsm.
+/// Currently the struct's only member is the temporary folder for softhsm.
 pub struct SoftHSMSetup {
     pub statedir_folder: TempDir,
 }
 
-// A SoftHSM setup. Construct a new instance with ::new().
-// Calling run() methods on the instance will invoke `softhsm_setup`
-// Note: Use run_softhsm_setup() first before before calling other functions.
+/// The SoftHSMSetup impl's run() methods invoke the `softhsm_setup` script.
+/// Note: Use run_softhsm_setup() first before before calling other functions.
 impl SoftHSMSetup {
-    // Constructs a new SoftHSMSetup instance.
+    /// Construct a new SoftHSMSetup instance.
     pub fn new() -> Result<Self> {
         // create a temporary folder (deleted when instance goes out of scope)
         let statedir_folder = TempDir::new(TEMPDIR_PREFIX)?;
         Ok(SoftHSMSetup { statedir_folder })
     }
 
-    // Returns the path to the softhsm configuration file.
+    /// Return the path to the softhsm configuration file.
     pub fn get_config_filename(&self) -> Result<String> {
         Ok(format!(
             "{}/softhsm2.conf",
@@ -30,8 +32,8 @@ impl SoftHSMSetup {
         ))
     }
 
-    // Invokes `softhsm_setup setup` and returns the public key that was
-    // displayed
+    /// Invoke `softhsm_setup setup` and return the public key that was
+    /// displayed
     pub fn run_softhsm_setup(&self, softhsm_setup: &str) -> Result<String> {
         let res = Command::new(softhsm_setup)
             .arg("setup")
@@ -54,7 +56,7 @@ impl SoftHSMSetup {
         }
     }
 
-    // Invokes `softhsm_setup getpubkey` and returns the public key
+    /// Invoke `softhsm_setup getpubkey` and return the public key.
     pub fn run_softhsm_get_pubkey(&self, softhsm_setup: &str) -> Result<String> {
         let res = Command::new(softhsm_setup)
             .arg("getpubkey")
@@ -66,7 +68,7 @@ impl SoftHSMSetup {
         Ok(String::from_utf8(res.stdout)?)
     }
 
-    // Invokes `softhsm_setup teardown`
+    /// Invoke `softhsm_setup teardown`.
     pub fn run_softhsm_teardown(&self, softhsm_setup: &str) -> Result<()> {
         let _ = Command::new(softhsm_setup)
             .arg("teardown")
