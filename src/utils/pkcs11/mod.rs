@@ -15,14 +15,14 @@ use std::collections::HashMap;
 extern crate base64;
 extern crate serde_yaml;
 
-// OAEPDefaultHash defines the default hash used for OAEP encryption; this
-// cannot be changed
+/// OAEPDefaultHash defines the default hash used for OAEP encryption; this
+/// cannot be changed
 pub static OAEP_DEFAULT_HASH: &str = "sha1";
 
-// Pkcs11KeyFile describes the format of the pkcs11 (private) key file.
-// It also carries pkcs11 module-related environment variables that are
-// transferred to the Pkcs11URI object and activated when the pkcs11 module is
-// used.
+/// Pkcs11KeyFile describes the format of the pkcs11 (private) key file.
+/// It also carries pkcs11 module-related environment variables that are
+/// transferred to the Pkcs11URI object and activated when the pkcs11 module is
+/// used.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct Pkcs11KeyFile {
     pkcs11: Pkcs11KeyFilePkcs11,
@@ -42,16 +42,16 @@ pub enum Pkcs11KeyType {
     PKFO(Box<Pkcs11KeyFileObject>),
 }
 
-// A Pkcs11Blob holds the encrypted blobs for all recipients.
-// This is what we will put into the image's annotations
+/// A Pkcs11Blob holds the encrypted blobs for all recipients.
+/// This is what we will put into the image's annotations
 #[derive(Serialize, Deserialize)]
 struct Pkcs11Blob {
     version: u32,
     recipients: Vec<Pkcs11Recipient>,
 }
 
-// A Pkcs11Recipient holds the b64-encoded and encrypted blob for a particular
-// recipient
+/// A Pkcs11Recipient holds the b64-encoded and encrypted blob for a particular
+/// recipient
 #[derive(Serialize, Deserialize)]
 struct Pkcs11Recipient {
     version: u32,
@@ -64,11 +64,11 @@ pub fn parse_pkcs11_uri(uri: &str) -> Result<Pkcs11Uri> {
     Ok(x)
 }
 
-// Parse a pkcs11 key file holding a pkcs11 URI describing a private key.
-// The file has the following yaml format:
-// pkcs11:
-//  - uri : <pkcs11 uri>
-// An error is returned if the pkcs11 URI is malformed
+/// Parse a pkcs11 key file holding a pkcs11 URI describing a private key.
+/// The file has the following yaml format:
+/// pkcs11:
+///  - uri : <pkcs11 uri>
+/// An error is returned if the pkcs11 URI is malformed.
 pub fn parse_pkcs11_key_file(yaml_bytes: &[u8]) -> Result<Pkcs11KeyFileObject> {
     let p11_key_file: Pkcs11KeyFile = serde_yaml::from_slice(yaml_bytes)?;
     let p11_uri = parse_pkcs11_uri(&p11_key_file.pkcs11.uri)?;
@@ -77,22 +77,22 @@ pub fn parse_pkcs11_key_file(yaml_bytes: &[u8]) -> Result<Pkcs11KeyFileObject> {
     Ok(Pkcs11KeyFileObject { uriw: p11uriw })
 }
 
-// Parse the input byte array as a pkcs11 key file yaml
+/// Parse the input byte array as a pkcs11 key file yaml.
 fn parse_pkcs11_public_key_yaml(yaml: &[u8], _prefix: String) -> Result<Pkcs11KeyFileObject> {
     // if the URI does not have enough attributes, we will throw an error when
     // decrypting
     parse_pkcs11_key_file(yaml)
 }
 
-// Parse the input byte array as pkcs11 key file (yaml format)
+/// Parse the input byte array as pkcs11 key file (yaml format).
 fn parse_pkcs11_private_key_yaml(yaml: &[u8], _prefix: String) -> Result<Pkcs11KeyFileObject> {
     // if the URI does not have enough attributes, we will throw an error when
     // decrypting
     parse_pkcs11_key_file(yaml)
 }
 
-// Try to parse a public key in DER format first and PEM format after,
-// returning an error if the parsing failed
+/// Try to parse a public key in DER format first and PEM format after,
+/// returning an error if the parsing failed.
 pub fn parse_public_key(pubkey: &[u8], prefix: String) -> Result<Pkcs11KeyType> {
     // FIXME: handle x509.ParsePKIXPublicKey(pubKey)
     //               x509.ParsePKIXPublicKey(block.Bytes)
@@ -118,8 +118,8 @@ pub fn parse_public_key(pubkey: &[u8], prefix: String) -> Result<Pkcs11KeyType> 
     Ok(res)
 }
 
-// Attempt to parse a private key in DER format first and PEM format after,
-// returning an error if the parsing failed.
+/// Attempt to parse a private key in DER format first and PEM format after,
+/// returning an error if the parsing failed.
 pub fn parse_private_key(
     privkey: &[u8],
     _privkey_password: &[u8],
@@ -139,9 +139,9 @@ pub fn parse_private_key(
     Ok(res)
 }
 
-// Set the environment variables given in the map and lock the environment
-// from modification with the same function; if successful, you *must* call
-// restoreEnv with the return value from this function
+/// Set the environment variables given in the map, and lock the environment
+/// from modification with the same function. If successful, you *must* call
+/// restoreEnv with the return value from this function
 fn set_env_vars(env: &HashMap<String, String>) -> Option<std::env::Vars> {
     // TODO lock
     if env.is_empty() {
@@ -154,8 +154,8 @@ fn set_env_vars(env: &HashMap<String, String>) -> Option<std::env::Vars> {
     Some(oldenv)
 }
 
-// Open a session with a pkcs11 device at the given slot and logs in with the
-// given PIN
+/// Open a session with a pkcs11 device at the given slot and log in with the
+/// given PIN.
 fn pkcs11_open_session(
     p11ctx: &pkcs11::Ctx,
     slotid: u64,
@@ -176,10 +176,10 @@ fn pkcs11_open_session(
     Ok(session)
 }
 
-// Get the parameters necessary for login from the Pkcs11URI.
-// PIN and module are mandatory; slot-id is optional.
-// For a private_key_operation a PIN is required and if none is given, this
-// function will return an error.
+/// Get the parameters necessary for login from the Pkcs11URI.
+/// PIN and module are mandatory; slot-id is optional.
+/// For a private_key_operation, a PIN is required, and if none is given, this
+/// function will return an error.
 fn pkcs11_uri_get_login_parameters(
     p11uriw: &Pkcs11UriWrapped,
     private_key_operation: bool,
@@ -194,7 +194,7 @@ fn pkcs11_uri_get_login_parameters(
     Ok((pin, module_name, slotid))
 }
 
-// Get the key label by retrieving the value of the 'object' attribute
+/// Get the key label by retrieving the value of the 'object' attribute.
 fn pkcs11_uri_get_key_id_and_label(p11uri: &Pkcs11Uri) -> Result<(&Vec<u8>, &String)> {
     let object_id = match p11uri.path_attributes.object_id.as_ref() {
         Some(x) => x,
@@ -207,10 +207,10 @@ fn pkcs11_uri_get_key_id_and_label(p11uri: &Pkcs11Uri) -> Result<(&Vec<u8>, &Str
     Ok((object_id, object_label))
 }
 
-// Use the given pkcs11 URI to select the pkcs11 module (shared libary) and to
-// get the PIN to use for login; if the URI contains a slot-id,
-// the given slot-id will be used; otherwise one slot after the other will be
-// attempted, and the first one where login succeeds will be used
+/// Use the given pkcs11 URI to select the pkcs11 module (shared libary) and to
+/// get the PIN te use for login. If the URI contains a slot-id,
+/// the given slot-id will be used. Otherwise, one slot after the other will be
+/// attempted, and the first one where login succeeds will be used.
 fn pkcs11_uri_login(
     p11uriw: &Pkcs11UriWrapped,
     private_key_operation: bool,
@@ -263,8 +263,8 @@ fn pkcs11_uri_login(
     }
 }
 
-// Find an object of the given class with the given object_id and/or
-// object_label
+/// Find an object of the given class with the given object_id and/or
+/// object_label.
 fn find_object(
     p11ctx: &pkcs11::Ctx,
     session: pkcs11::types::CK_SESSION_HANDLE,
@@ -384,10 +384,10 @@ fn oaep(hashalg: &str) -> Result<pkcs11::types::CK_RSA_PKCS_OAEP_PARAMS> {
     Ok(oaep)
 }
 
-// Encrypt plaintext with the given RsaPublicKey.
-// The environment variable OCICRYPT_OAEP_HASHALG can be set to 'sha1' to force
-// usage of sha1 for OAEP (SoftHSM). This function is needed by clients who are
-// using a public key file for pkcs11 encryption
+/// Encrypt plaintext with the given RsaPublicKey.
+/// The environment variable OCICRYPT_OAEP_HASHALG can be set to 'sha1' to
+/// force usage of sha1 for OAEP (SoftHSM). This function is needed by clients
+/// who are using a public key file for pkcs11 encryption.
 fn rsa_public_encrypt_oaep(pubkey: &RsaPublicKey, plaintext: &[u8]) -> Result<(Vec<u8>, String)> {
     let oaephash: String = match std::env::var("OCICRYPT_OAEP_HASHALG") {
         Ok(o) => o,
@@ -421,8 +421,8 @@ fn rsa_public_encrypt_oaep(pubkey: &RsaPublicKey, plaintext: &[u8]) -> Result<(V
     Ok((ciphertext, hashalg.to_string()))
 }
 
-// Uses a public key described by a pkcs11 URI to OAEP encrypt the given
-// plaintext
+/// Use a public key described by a pkcs11 URI to OAEP encrypt the given
+/// plaintext.
 fn public_encrypt_oaep(
     pub_key: &Pkcs11KeyFileObject,
     plaintext: &[u8],
@@ -475,24 +475,24 @@ fn public_encrypt_oaep(
     Ok((ciphertext, hashalg))
 }
 
-// Encrypt for one or multiple pkcs11 devices; the public keys passed to this
-// function may either be *rsa.PublicKey or *pkcs11uri.Pkcs11URI; the returned
-// byte array is a JSON string of the following format:
-// {
-//   recipients: [  // recipient list
-//     {
-//        "version": 0,
-//        "blob": <base64 encoded RSA OAEP encrypted blob>,
-//        "hash": <hash used for OAEP other than 'sha256'>
-//     } ,
-//     {
-//        "version": 0,
-//        "blob": <base64 encoded RSA OAEP encrypted blob>,
-//        "hash": <hash used for OAEP other than 'sha256'>
-//     } ,
-//     [...]
-//   ]
-// }
+/// Encrypt for one or multiple pkcs11 devices. The public keys passed to this
+/// function may either be *rsa.PublicKey or *pkcs11uri.Pkcs11URI; the returned
+/// byte array is a JSON string of the following format:
+/// {
+///   recipients: [  // recipient list
+///     {
+///        "version": 0,
+///        "blob": <base64 encoded RSA OAEP encrypted blob>,
+///        "hash": <hash used for OAEP other than 'sha256'>
+///     } ,
+///     {
+///        "version": 0,
+///        "blob": <base64 encoded RSA OAEP encrypted blob>,
+///        "hash": <hash used for OAEP other than 'sha256'>
+///     } ,
+///     [...]
+///   ]
+/// }
 pub fn encrypt_multiple(pub_keys: &[Pkcs11KeyType], data: &[u8]) -> Result<Vec<u8>> {
     let mut pkcs11_blob: Pkcs11Blob = Pkcs11Blob {
         version: 0,
@@ -514,7 +514,7 @@ pub fn encrypt_multiple(pub_keys: &[Pkcs11KeyType], data: &[u8]) -> Result<Vec<u
     Ok(serde_json::to_vec(&pkcs11_blob)?)
 }
 
-// Use a pkcs11 URI describing a private key to OAEP decrypt a ciphertext
+/// Use a pkcs11 URI describing a private key to OAEP decrypt a ciphertext.
 fn private_decrypt_oaep(
     priv_key: &Pkcs11KeyFileObject,
     ciphertext: &[u8],
@@ -562,22 +562,22 @@ fn private_decrypt_oaep(
     Ok(plaintext)
 }
 
-// Try to decrypt one of the recipients' blobs using a pkcs11 private key.
-// The input pkcs11blobstr is a string with the following format:
-// {
-//   recipients: [  // recipient list
-//     {
-//        "version": 0,
-//        "blob": <base64 encoded RSA OAEP encrypted blob>,
-//        "hash": <hash used for OAEP other than 'sha256'>
-//     } ,
-//     {
-//        "version": 0,
-//        "blob": <base64 encoded RSA OAEP encrypted blob>,
-//        "hash": <hash used for OAEP other than 'sha256'>
-//     } ,
-//     [...]
-// }
+/// Try to decrypt one of the recipients' blobs using a pkcs11 private key.
+/// The input pkcs11blobstr is a string with the following format:
+/// {
+///   recipients: [  // recipient list
+///     {
+///        "version": 0,
+///        "blob": <base64 encoded RSA OAEP encrypted blob>,
+///        "hash": <hash used for OAEP other than 'sha256'>
+///     } ,
+///     {
+///        "version": 0,
+///        "blob": <base64 encoded RSA OAEP encrypted blob>,
+///        "hash": <hash used for OAEP other than 'sha256'>
+///     } ,
+///     [...]
+/// }
 pub fn decrypt_pkcs11(
     priv_keys: &[Box<Pkcs11KeyFileObject>],
     pkcs11blobstr: &[u8],
