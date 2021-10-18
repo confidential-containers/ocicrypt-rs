@@ -303,63 +303,63 @@ pub fn decrypt_layer<R: Read>(
     Ok((lbch.aes_ctr_block_cipher, opts.private.digest))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use sha2::{Digest, Sha256};
-    use std::fs;
-    use std::path::PathBuf;
-
-    #[test]
-    fn test_encrypt_decrypt_layer() {
-        let path = load_data_path();
-        let pub_key_file = format!("{}/{}", path, "public_key.pem");
-        let pub_key = fs::read(&pub_key_file).unwrap();
-
-        let priv_key_file = format!("{}/{}", path, "private_key.pem");
-        let priv_key = fs::read(&priv_key_file).unwrap();
-
-        let mut ec = EncryptConfig::default();
-        assert!(ec.encrypt_with_jwe(vec![pub_key.clone()]).is_ok());
-        assert!(ec.encrypt_with_jwe(vec![pub_key]).is_ok());
-
-        let mut dc = DecryptConfig::default();
-        assert!(dc
-            .decrypt_with_priv_keys(vec![priv_key.to_vec()], vec![vec![]])
-            .is_ok());
-
-        let layer_data: Vec<u8> = b"This is some text!".to_vec();
-        let mut desc = OciDescriptor::default();
-        let digest = format!("sha256:{:x}", Sha256::digest(&layer_data));
-        desc.digest = digest.clone();
-
-        let (layer_encryptor, mut elf) = encrypt_layer(&ec, layer_data.as_slice(), &desc).unwrap();
-
-        let mut encrypted_data: Vec<u8> = Vec::new();
-        let mut encryptor = layer_encryptor.unwrap();
-        assert!(encryptor.read_to_end(&mut encrypted_data).is_ok());
-        assert!(encryptor.finalized_lbco(&mut elf.lbco).is_ok());
-
-        if let Ok(new_annotations) = elf.finalized_annotations(&ec, &desc, Some(&mut encryptor)) {
-            let new_desc = OciDescriptor {
-                annotations: Some(new_annotations),
-                ..Default::default()
-            };
-            let (layer_decryptor, dec_digest) =
-                decrypt_layer(&dc, encrypted_data.as_slice(), &new_desc, false).unwrap();
-            let mut plaintxt_data: Vec<u8> = Vec::new();
-            let mut decryptor = layer_decryptor.unwrap();
-
-            assert!(decryptor.read_to_end(&mut plaintxt_data).is_ok());
-            assert_eq!(layer_data, plaintxt_data);
-            assert_eq!(digest, dec_digest);
-        }
-    }
-
-    fn load_data_path() -> String {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("data");
-
-        path.to_str().unwrap().to_string()
-    }
-}
+//#[cfg(test)]
+//mod tests {
+//    use super::*;
+//    use sha2::{Digest, Sha256};
+//    use std::fs;
+//    use std::path::PathBuf;
+//
+//    #[test]
+//    fn test_encrypt_decrypt_layer() {
+//        let path = load_data_path();
+//        let pub_key_file = format!("{}/{}", path, "public_key.pem");
+//        let pub_key = fs::read(&pub_key_file).unwrap();
+//
+//        let priv_key_file = format!("{}/{}", path, "private_key.pem");
+//        let priv_key = fs::read(&priv_key_file).unwrap();
+//
+//        let mut ec = EncryptConfig::default();
+//        assert!(ec.encrypt_with_jwe(vec![pub_key.clone()]).is_ok());
+//        assert!(ec.encrypt_with_jwe(vec![pub_key]).is_ok());
+//
+//        let mut dc = DecryptConfig::default();
+//        assert!(dc
+//            .decrypt_with_priv_keys(vec![priv_key.to_vec()], vec![vec![]])
+//            .is_ok());
+//
+//        let layer_data: Vec<u8> = b"This is some text!".to_vec();
+//        let mut desc = OciDescriptor::default();
+//        let digest = format!("sha256:{:x}", Sha256::digest(&layer_data));
+//        desc.digest = digest.clone();
+//
+//        let (layer_encryptor, mut elf) = encrypt_layer(&ec, layer_data.as_slice(), &desc).unwrap();
+//
+//        let mut encrypted_data: Vec<u8> = Vec::new();
+//        let mut encryptor = layer_encryptor.unwrap();
+//        assert!(encryptor.read_to_end(&mut encrypted_data).is_ok());
+//        assert!(encryptor.finalized_lbco(&mut elf.lbco).is_ok());
+//
+//        if let Ok(new_annotations) = elf.finalized_annotations(&ec, &desc, Some(&mut encryptor)) {
+//            let new_desc = OciDescriptor {
+//                annotations: Some(new_annotations),
+//                ..Default::default()
+//            };
+//            let (layer_decryptor, dec_digest) =
+//                decrypt_layer(&dc, encrypted_data.as_slice(), &new_desc, false).unwrap();
+//            let mut plaintxt_data: Vec<u8> = Vec::new();
+//            let mut decryptor = layer_decryptor.unwrap();
+//
+//            assert!(decryptor.read_to_end(&mut plaintxt_data).is_ok());
+//            assert_eq!(layer_data, plaintxt_data);
+//            assert_eq!(digest, dec_digest);
+//        }
+//    }
+//
+//    fn load_data_path() -> String {
+//        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+//        path.push("data");
+//
+//        path.to_str().unwrap().to_string()
+//    }
+//}
