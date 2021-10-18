@@ -20,7 +20,6 @@ pub struct Pkcs11KeyFileObject {
 }
 
 impl KeyWrapper for Pkcs11KeyWrapper {
-
     fn wrap_keys(&self, ec: &EncryptConfig, opts_data: &[u8]) -> Result<Vec<u8>> {
         let mut pubkeys: Vec<Vec<u8>> = Vec::new();
         if let Some(pks) = ec.param.get("pkcs11-pubkeys") {
