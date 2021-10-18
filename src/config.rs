@@ -425,12 +425,14 @@ mod tests {
     }
 }
 
-// Pkcs11Config describes the layout of a pkcs11 config file
-// The file has the following yaml format:
-// module_directories:
-// - /usr/lib64/pkcs11/
-// allowed_module_paths:
-// - /usr/lib64/pkcs11/libsofthsm2.so
+/// Pkcs11Config describes the layout of a pkcs11 config file
+/// The file has the following yaml format:
+/// module_directories:
+/// - /usr/lib64/pkcs11/
+/// allowed_module_paths:
+/// - /usr/lib64/pkcs11/libsofthsm2.so
+/// The Pkcs11Config file influences the module search behavior, as well as the
+/// set of modules that users are allowed to use.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Pkcs11Config {
     pub module_directories: Vec<String>,
@@ -520,21 +522,20 @@ impl Pkcs11Config {
     }
 }
 
+/// Parse a pkcs11 config from a file
 fn parse_config_file(filename: String) -> Result<Pkcs11Config> {
     let data = std::fs::read_to_string(filename)?;
     let config: Pkcs11Config = serde_yaml::from_str(&data)?;
     Ok(config)
 }
 
-// Parse a pkcs11 config file that influences the module search behavior as
-// well as the set of modules that users are allowed to use
+/// Parse a pkcs11 config from its yaml string.
 pub fn parse_pkcs11_config_file(yamlstr: &[u8]) -> Result<Pkcs11Config> {
     let p11conf: Pkcs11Config = serde_yaml::from_slice(yamlstr)?;
     Ok(p11conf)
 }
 
-// GetDefaultModuleDirectories returns module directories covering
-// a variety of Linux distros
+/// Returns module directories covering a variety of Linux distros
 fn get_default_module_directories() -> Result<Vec<String>> {
     let mut dirs = vec![
         "/usr/lib64/pkcs11/".to_string(), // Fedora,RHEL,openSUSE
