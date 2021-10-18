@@ -20,8 +20,7 @@ pub struct Pkcs11KeyFileObject {
 }
 
 impl KeyWrapper for Pkcs11KeyWrapper {
-    // Wrap the session key for recpients and encrypt the opts_data,
-    // which describe the symmetric key used for encrypting the layer
+
     fn wrap_keys(&self, ec: &EncryptConfig, opts_data: &[u8]) -> Result<Vec<u8>> {
         let mut pubkeys: Vec<Vec<u8>> = Vec::new();
         if let Some(pks) = ec.param.get("pkcs11-pubkeys") {
