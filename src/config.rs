@@ -496,16 +496,12 @@ impl Pkcs11Config {
     }
 
     fn get_default_crypto_config_opts(&self) -> Result<Pkcs11Config> {
-        let mdyaml = get_default_module_directories_yaml("".to_string())?;
-
-        let config = format!(
-            "module-directories:\n\
-                              {} \
-                              allowed-module-paths:\n\
-                              {}",
-            mdyaml, mdyaml
-        );
-        parse_pkcs11_config_file(config.as_bytes())
+        let default_dirs = get_default_module_directories()?;
+        let p11conf = Pkcs11Config {
+            module_directories: default_dirs.clone(),
+            allowed_module_paths: default_dirs.clone(),
+        };
+        Ok(p11conf)
     }
 
     // This was used by helpers/parse_helpers.go in the original
