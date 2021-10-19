@@ -499,7 +499,7 @@ impl Pkcs11Config {
         let default_dirs = get_default_module_directories()?;
         let p11conf = Pkcs11Config {
             module_directories: default_dirs.clone(),
-            allowed_module_paths: default_dirs.clone(),
+            allowed_module_paths: default_dirs,
         };
         Ok(p11conf)
     }
