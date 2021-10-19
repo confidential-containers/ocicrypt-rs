@@ -50,7 +50,7 @@ impl SoftHSMSetup {
                 Ok(res.to_string())
             }
             None => Err(anyhow!(
-                "Failed to find 'pkcs11:' in output 
+                "Failed to find 'pkcs11:' in output \
                                        from `softhsm setup`"
             )),
         }
