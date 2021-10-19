@@ -532,7 +532,7 @@ pub fn parse_pkcs11_config_file(yamlstr: &[u8]) -> Result<Pkcs11Config> {
 }
 
 /// Returns module directories covering a variety of Linux distros
-fn get_default_module_directories() -> Result<Vec<String>> {
+pub fn get_default_module_directories() -> Result<Vec<String>> {
     let mut dirs = vec![
         "/usr/lib64/pkcs11/".to_string(), // Fedora,RHEL,openSUSE
         "/usr/lib/pkcs11/".to_string(),   // Fedora,ArchLinux

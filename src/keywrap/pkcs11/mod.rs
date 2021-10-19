@@ -136,7 +136,7 @@ fn add_pub_keys(dc: &DecryptConfig, pubkeys: &[Vec<u8>]) -> Result<Vec<Pkcs11Key
 /*#[cfg(test)]
 mod kw_tests {
     use super::*;
-    use crate::config::{get_default_module_directories_yaml, CryptoConfig};
+    use crate::config::{get_default_module_directories, CryptoConfig};
     use crate::softhsm::SoftHSMSetup;
 
     const SOFTHSM_SETUP: &str = "scripts/softhsm_setup";
@@ -210,15 +210,13 @@ mod kw_tests {
     fn get_pkcs11_config_yaml() -> Result<Vec<u8>> {
         // we need to provide a configuration file so that on the various
         // distros the libsofthsm2.so will be found by searching directories
-        let mdyaml = get_default_module_directories_yaml("".to_string())?;
-        let config = format!(
-            "module_directories:\n\
-                              {}\
-                              allowed_module_paths:\n\
-                              {}",
-            mdyaml, mdyaml
-        );
-        Ok(config.as_bytes().to_vec())
+        let default_dirs = get_default_module_directories()?;
+        let p11conf = Pkcs11Config {
+            module_directories: default_dirs.clone(),
+            allowed_module_paths: default_dirs,
+        };
+        let s = serde_yaml::to_string(&p11conf)?;
+        Ok(s.into_bytes())
     }
 
     fn create_valid_pkcs11_ccs() -> Result<(Vec<CryptoConfig>, SoftHSMSetup)> {
