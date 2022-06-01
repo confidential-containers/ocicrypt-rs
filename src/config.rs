@@ -81,6 +81,7 @@ pub struct Command {
 pub struct KeyProviderAttrs {
     pub cmd: Option<Command>,
     pub grpc: Option<String>,
+    pub ttrpc: Option<String>,
 }
 
 /// OcicryptConfig represents the format of an ocicrypt_provider.conf config file
@@ -397,6 +398,7 @@ mod tests {
                 args: Some(args),
             }),
             grpc: None,
+            ttrpc: None,
         };
         provider.insert(String::from("keyprovider1"), attrs);
 

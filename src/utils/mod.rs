@@ -8,9 +8,9 @@ use anyhow::Result;
 #[cfg(feature = "utils-runner")]
 pub mod runner;
 
-#[cfg(feature = "utils-keyprovider")]
-#[rustfmt::skip]
-pub mod keyprovider;
+pub mod grpc;
+
+pub mod ttrpc;
 
 /// CommandExecuter trait which requires implementation for command exec, first argument is the command name, like /usr/bin/<command-name>,
 /// the second is the list of args to pass to it
