@@ -129,9 +129,7 @@ pub fn parse_private_key(
     // FIXME: handle key types other than just pkcs11.
     let key = parse_pkcs11_private_key_yaml(privkey, prefix);
     let res: Pkcs11KeyType = match key {
-        Ok(k) => {
-            Pkcs11KeyType::PKFO(Box::new(k))
-        }
+        Ok(k) => Pkcs11KeyType::PKFO(Box::new(k)),
         Err(e) => {
             return Err(anyhow!("parsing pkcs11 yaml failed: {}", e));
         }
