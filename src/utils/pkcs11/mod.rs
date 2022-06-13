@@ -25,7 +25,7 @@ pub static OAEP_DEFAULT_HASH: &str = "sha1";
 /// It also carries pkcs11 module-related environment variables that are
 /// transferred to the Pkcs11URI object and activated when the pkcs11 module is
 /// used.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Pkcs11KeyFile {
     pkcs11: Pkcs11KeyFilePkcs11,
     module: Pkcs11KeyFileModule,
