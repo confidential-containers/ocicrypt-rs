@@ -8,7 +8,8 @@ use pkcs11_uri::Pkcs11Uri;
 use rand::rngs::OsRng;
 use rsa::{pkcs8::FromPublicKey, PaddingScheme, PublicKey, RsaPublicKey};
 use sha1::Sha1;
-use sha2::Sha256;
+// FIXME
+//use sha2::Sha256;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
@@ -126,16 +127,15 @@ pub fn parse_private_key(
     prefix: String,
 ) -> Result<Pkcs11KeyType> {
     // FIXME: handle key types other than just pkcs11.
-    let res: Pkcs11KeyType;
     let key = parse_pkcs11_private_key_yaml(privkey, prefix);
-    match key {
+    let res: Pkcs11KeyType = match key {
         Ok(k) => {
-            res = Pkcs11KeyType::PKFO(Box::new(k));
+            Pkcs11KeyType::PKFO(Box::new(k))
         }
         Err(e) => {
             return Err(anyhow!("parsing pkcs11 yaml failed: {}", e));
         }
-    }
+    };
     Ok(res)
 }
 
@@ -409,7 +409,9 @@ fn rsa_public_encrypt_oaep(pubkey: &RsaPublicKey, plaintext: &[u8]) -> Result<(V
         }
         "sha256" => {
             hashalg = "sha256";
-            padding = PaddingScheme::new_oaep::<Sha256>();
+            // FIXME
+            padding = PaddingScheme::new_oaep::<Sha1>();
+            //padding = PaddingScheme::new_oaep::<Sha256>();
         }
         _ => {
             return Err(anyhow!("Unsupported OAEP hash '{}'", oaephash));
