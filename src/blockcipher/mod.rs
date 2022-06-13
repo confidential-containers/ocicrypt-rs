@@ -1,21 +1,21 @@
 // Copyright The ocicrypt Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{anyhow, Result};
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::io::Read;
-extern crate base64;
-extern crate base64_serde;
-use base64_serde::base64_serde_type;
 
-pub mod aes_ctr;
+use anyhow::{anyhow, Result};
+use base64_serde::base64_serde_type;
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+
+mod aes_ctr;
 use aes_ctr::AESCTRBlockCipher;
 
-/// LayerCipherType is the ciphertype as specified in the layer metadata
+/// Type of the cipher algorithm used to encrypt/decrypt image layers.
 pub type LayerCipherType = String;
 
-/// TODO: Should be obtained from OCI spec once included
+// TODO: Should be obtained from OCI spec once included
+/// The default cipher algorithm for image layer encryption/decryption.
 pub const AES256CTR: &str = "AES_256_CTR_HMAC_SHA256";
 
 base64_serde_type!(Base64Vec, base64::STANDARD);
@@ -47,150 +47,183 @@ where
         .collect()
 }
 
-/// PrivateLayerBlockCipherOptions includes the information required to encrypt/decrypt
-/// an image layer which are sensitive and should not be in plaintext
+/// The information required to encrypt/decrypt an image layer which are sensitive and should not
+/// be in plaintext.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct PrivateLayerBlockCipherOptions {
-    /// symmetric_key represents the symmetric key used for encryption/decryption
-    /// This field should be populated by encrypt/decrypt calls
+    /// The symmetric key used for encryption/decryption.
+    ///
+    /// This field should be populated by the LayerBlockCipher::encrypt() method.
     #[serde(rename = "symkey", with = "Base64Vec")]
     pub symmetric_key: Vec<u8>,
 
-    /// digest is the digest of the original data for verification.
-    /// This is NOT populated by encrypt/decrypt calls
-    pub digest: String,
-
-    /// cipher_options contains the cipher metadata used for encryption/decryption
-    /// This field should be populated by encrypt/decrypt calls
+    /// The cipher metadata used to configure the encryption/decryption algorithm.
+    ///
+    /// This field should be populated by the LayerBlockCipher::encrypt()/decrypt() methods.
     #[serde(
         rename = "cipheroptions",
         serialize_with = "base64_hashmap_s",
         deserialize_with = "base64_hashmap_d"
     )]
     pub cipher_options: HashMap<String, Vec<u8>>,
+
+    /// The digest of the original data.
+    ///
+    /// This field is NOT populated by the LayerBlockCipher::encrypt()/decrypt() methods.
+    pub digest: String,
 }
 
-/// PublicLayerBlockCipherOptions includes the information required to encrypt/decrypt
-/// an image layer which are public and can be deduplicated in plaintext across multiple
-/// recipients
+/// The information required to encrypt/decrypt an image layer which are public and can be
+/// deduplicated in plaintext across multiple recipients.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct PublicLayerBlockCipherOptions {
-    /// cipher_type denotes the cipher type according to the list of OCI suppported
+    /// The cipher algorithm used to encrypt/decrypt the image layer.
     #[serde(rename = "cipher")]
     pub cipher_type: LayerCipherType,
 
-    /// hmac contains the hmac string to help verify encryption
-    #[serde(with = "Base64Vec")]
-    pub hmac: Vec<u8>,
-
-    /// cipher_options contains the cipher metadata used for encryption/decryption
-    /// This field should be populated by encrypt/decrypt calls
+    /// The cipher metadata used to configure the encryption/decryption algorithm.
+    ///
+    /// This field should be populated by the LayerBlockCipher::encrypt()/decrypt() methods.
     #[serde(
         rename = "cipheroptions",
         serialize_with = "base64_hashmap_s",
         deserialize_with = "base64_hashmap_d"
     )]
     pub cipher_options: HashMap<String, Vec<u8>>,
+
+    /// The hashed message authentication code used to verify the layer data.
+    ///
+    /// This field should be populated by LayerBlockCipher::encrypt() methods.
+    #[serde(with = "Base64Vec")]
+    pub hmac: Vec<u8>,
 }
 
-/// LayerBlockCipherOptions contains the public and private LayerBlockCipherOptions
-/// required to encrypt/decrypt an image
+/// The public and private configuration information required to encrypt/decrypt an image layer.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct LayerBlockCipherOptions {
+    /// The public configuration information for image layer encryption/decryption.
     pub public: PublicLayerBlockCipherOptions,
+    /// The private configuration information for image layer encryption/decryption.
     pub private: PrivateLayerBlockCipherOptions,
 }
 
 impl LayerBlockCipherOptions {
-    /// get_opt returns the value of the cipher option if the option exists
-    pub fn get_opt(&self, key: String) -> Option<Vec<u8>> {
-        match self.public.cipher_options.get(&key) {
-            Some(value) => Some(value.to_vec()),
-            None => self
-                .private
-                .cipher_options
-                .get(&key)
-                .map(|value| value.to_vec()),
-        }
+    /// Get an option from the public or private configuration, value from the public configuration
+    /// has higher priority.
+    pub fn get_opt(&self, key: &str) -> Option<Vec<u8>> {
+        self.public
+            .cipher_options
+            .get(key)
+            .or_else(|| self.private.cipher_options.get(key))
+            .map(|v| v.to_vec())
     }
 }
 
-/// LayerBlockCipher defined the interface for setting up encrypt/decrypt functionality
-/// with the input data for a specific algorithm
-pub trait LayerBlockCipher<R: Read> {
-    /// generate_key creates a symmetric key
+/// Trait to setup the encryption/decryption context.
+pub trait LayerBlockCipher<R> {
+    /// Create a symmetric key for encryption.
     fn generate_key(&self) -> Result<Vec<u8>>;
 
-    /// encrypt takes in layer data and required LayerBlockCipherOptions to initialize encrypt process
+    /// Setup the context for encryption.
     fn encrypt(&mut self, input: R, opts: &mut LayerBlockCipherOptions) -> Result<()>;
 
-    /// decrypt takes in layer ciphertext data and required LayerBlockCipherOptions to initialize decrypt process
+    /// Setup the context for decryption.
     fn decrypt(&mut self, input: R, opts: &mut LayerBlockCipherOptions) -> Result<()>;
 }
 
-pub trait Finalizer {
-    /// finalized_lbco update LayerBlockCipherOptions after finished encrypt operation
+/// Trait to finalize the encryption operation.
+pub trait EncryptionFinalizer {
+    /// Update the [`LayerBlockCipherOptions`] object after finishing the encryption operation.
     fn finalized_lbco(&self, opts: &mut LayerBlockCipherOptions) -> Result<()>;
 }
 
-/// LayerBlockCipherHandler is the handler for encrypt/decrypt for layers
-pub struct LayerBlockCipherHandler<R: Read> {
-    pub aes_ctr_block_cipher: Option<AESCTRBlockCipher<R>>,
+/// Handler for image layer encryption/decryption.
+pub enum LayerBlockCipherHandler<R> {
+    /// AES_256_CTR_HMAC_SHA256
+    Aes256Ctr(AESCTRBlockCipher<R>),
 }
 
-impl<R: Read> LayerBlockCipherHandler<R> {
-    /// Create a LayerBlockCipherHandler with default aes ctr block cipher
+impl<R> LayerBlockCipherHandler<R> {
+    /// Create a [`LayerBlockCipherHandler`] object with default aes ctr block cipher
     pub fn new() -> Result<LayerBlockCipherHandler<R>> {
         let aes_ctr_block_cipher = AESCTRBlockCipher::new(256)?;
-        let handler = LayerBlockCipherHandler {
-            aes_ctr_block_cipher: Some(aes_ctr_block_cipher),
-        };
-
-        Ok(handler)
+        Ok(LayerBlockCipherHandler::Aes256Ctr(aes_ctr_block_cipher))
     }
+}
 
-    /// encrypt is the handler for the layer encryption routine
+impl<R> LayerBlockCipherHandler<R> {
+    /// Setup the context for image layer encryption.
     pub fn encrypt(
         &mut self,
         plain_data_reader: R,
         typ: &str,
         opts: &mut LayerBlockCipherOptions,
     ) -> Result<()> {
-        if typ != AES256CTR {
-            return Err(anyhow!("unsupported cipher type {}", typ));
-        }
-
-        match &mut self.aes_ctr_block_cipher {
-            Some(block_cipher) => {
-                let sk = block_cipher.generate_key()?;
-                opts.private.symmetric_key = sk;
+        match self {
+            LayerBlockCipherHandler::Aes256Ctr(block_cipher) => {
+                if typ != AES256CTR {
+                    return Err(anyhow!("unsupported cipher type {}", typ));
+                }
+                opts.private.symmetric_key = block_cipher.generate_key()?;
                 opts.public.cipher_type = AES256CTR.to_string();
-
                 block_cipher.encrypt(plain_data_reader, opts)?;
-                Ok(())
             }
-            None => Err(anyhow!("uninitialized cipher")),
         }
+
+        Ok(())
     }
 
-    /// decrypt is the handler for the layer decryption routine
+    /// Setup the context for image layer decryption.
     pub fn decrypt(
         &mut self,
         enc_data_reader: R,
         opts: &mut LayerBlockCipherOptions,
     ) -> Result<()> {
         let typ = &opts.public.cipher_type;
-        if typ != AES256CTR {
-            return Err(anyhow!("unsupported cipher type {}", typ));
+
+        match self {
+            LayerBlockCipherHandler::Aes256Ctr(block_cipher) => {
+                if typ != AES256CTR {
+                    return Err(anyhow!("unsupported cipher type {}", typ));
+                }
+                block_cipher.decrypt(enc_data_reader, opts)?;
+            }
         }
 
-        match &mut self.aes_ctr_block_cipher {
-            Some(block_cipher) => {
-                block_cipher.decrypt(enc_data_reader, opts)?;
-                Ok(())
-            }
-            None => Err(anyhow!("uninitialized cipher")),
+        Ok(())
+    }
+}
+
+impl<R> EncryptionFinalizer for LayerBlockCipherHandler<R> {
+    fn finalized_lbco(&self, opts: &mut LayerBlockCipherOptions) -> Result<()> {
+        match self {
+            LayerBlockCipherHandler::Aes256Ctr(block_cipher) => block_cipher.finalized_lbco(opts),
         }
+    }
+}
+
+impl<R: Read> Read for LayerBlockCipherHandler<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            LayerBlockCipherHandler::Aes256Ctr(block_cipher) => block_cipher.read(buf),
+        }
+    }
+}
+
+#[cfg(feature = "async-io")]
+impl<R: tokio::io::AsyncRead> tokio::io::AsyncRead for LayerBlockCipherHandler<R> {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        // This is okay because `block_cipher` is pinned when `self` is.
+        let aes_ctr_256 = unsafe {
+            self.map_unchecked_mut(|v| match v {
+                LayerBlockCipherHandler::Aes256Ctr(block_cipher) => block_cipher,
+            })
+        };
+        aes_ctr_256.poll_read(cx, buf)
     }
 }
 
@@ -210,9 +243,9 @@ mod tests {
 
         let mut encrypted_data: Vec<u8> = Vec::new();
         assert!(lbch
-            .encrypt(layer_data.as_slice(), &AES256CTR.to_string(), &mut lbco)
+            .encrypt(layer_data.as_slice(), AES256CTR, &mut lbco)
             .is_ok());
-        let mut encryptor = lbch.aes_ctr_block_cipher.unwrap();
+        let LayerBlockCipherHandler::Aes256Ctr(mut encryptor) = lbch;
         assert!(encryptor.read_to_end(&mut encrypted_data).is_ok());
         assert!(encryptor.finalized_lbco(&mut lbco).is_ok());
 
@@ -224,7 +257,7 @@ mod tests {
             serde_json::from_str(&serialized_json).unwrap_or_default();
 
         assert!(lbch.decrypt(encrypted_data.as_slice(), &mut lbco).is_ok());
-        let mut decryptor = lbch.aes_ctr_block_cipher.unwrap();
+        let LayerBlockCipherHandler::Aes256Ctr(mut decryptor) = lbch;
         let mut plaintxt_data: Vec<u8> = Vec::new();
         assert!(decryptor.read_to_end(&mut plaintxt_data).is_ok());
 
@@ -235,7 +268,7 @@ mod tests {
         let mut lbch = LayerBlockCipherHandler::new().unwrap();
         lbco.private.symmetric_key = vec![0; 32];
         assert!(lbch.decrypt(encrypted_data.as_slice(), &mut lbco).is_ok());
-        let mut decryptor = lbch.aes_ctr_block_cipher.unwrap();
+        let LayerBlockCipherHandler::Aes256Ctr(mut decryptor) = lbch;
         let mut plaintxt_data: Vec<u8> = Vec::new();
         assert!(decryptor.read_to_end(&mut plaintxt_data).is_err());
     }

@@ -1,42 +1,52 @@
 // Copyright The ocicrypt Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::blockcipher::{
-    Finalizer, LayerBlockCipherHandler, LayerBlockCipherOptions, PrivateLayerBlockCipherOptions,
-    PublicLayerBlockCipherOptions, AES256CTR,
-};
-use crate::config::{DecryptConfig, EncryptConfig, OcicryptConfig, OCICRYPT_ENVVARNAME};
-use crate::keywrap::jwe::JweKeyWrapper;
-use crate::keywrap::keyprovider;
-use crate::keywrap::KeyWrapper;
-use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::io::Read;
-extern crate oci_distribution;
+
+use anyhow::{anyhow, Result};
 use oci_distribution::manifest::OciDescriptor;
-extern crate base64;
+
+use crate::blockcipher::{
+    EncryptionFinalizer, LayerBlockCipherHandler, LayerBlockCipherOptions,
+    PrivateLayerBlockCipherOptions, PublicLayerBlockCipherOptions, AES256CTR,
+};
+use crate::config::{DecryptConfig, EncryptConfig};
+#[cfg(feature = "keywrap-jwe")]
+use crate::keywrap::jwe::JweKeyWrapper;
+#[cfg(feature = "keywrap-keyprovider")]
+use crate::keywrap::keyprovider;
+use crate::keywrap::KeyWrapper;
 
 lazy_static! {
     static ref KEY_WRAPPERS: HashMap<String, Box<dyn KeyWrapper>> = {
+        #[allow(unused_mut)]
         let mut m = HashMap::new();
-        m.insert(
-            "jwe".to_string(),
-            Box::new(JweKeyWrapper {}) as Box<dyn KeyWrapper>,
-        );
-// TODO: The error over here needs to be logged to be in consistent with golang version.
-        let ocicrypt_config = OcicryptConfig::from_env(OCICRYPT_ENVVARNAME)
-            .expect("Unable to read ocicrypt config file");
-        let key_providers = ocicrypt_config.key_providers;
-        for (provider_name, attrs) in key_providers.iter() {
+
+        #[cfg(feature = "keywrap-jwe")] {
             m.insert(
-                "provider.".to_owned() + provider_name,
-                Box::new(keyprovider::new_key_wrapper(
-                    provider_name.to_string(),
-                    attrs.clone(),
-                    None,
-                )) as Box<dyn KeyWrapper>,
+                "jwe".to_string(),
+                Box::new(JweKeyWrapper {}) as Box<dyn KeyWrapper>,
             );
         }
+
+        #[cfg(feature = "keywrap-keyprovider")] {
+            // TODO: The error over here needs to be logged to be in consistent with golang version.
+            let ocicrypt_config = crate::config::OcicryptConfig::from_env(crate::config::OCICRYPT_ENVVARNAME)
+                .expect("Unable to read ocicrypt config file");
+            let key_providers = ocicrypt_config.key_providers;
+            for (provider_name, attrs) in key_providers.iter() {
+                m.insert(
+                    "provider.".to_owned() + provider_name,
+                    Box::new(keyprovider::KeyProviderKeyWrapper::new(
+                        provider_name.to_string(),
+                        attrs.clone(),
+                        None,
+                    )) as Box<dyn KeyWrapper>,
+                );
+            }
+        }
+
         m
     };
     static ref KEY_WRAPPERS_ANNOTATIONS: HashMap<String, String> = {
@@ -59,7 +69,7 @@ impl EncLayerFinalizer {
         &mut self,
         ec: &EncryptConfig,
         desc: &OciDescriptor,
-        finalizer: Option<&mut impl Finalizer>,
+        finalizer: Option<&mut impl EncryptionFinalizer>,
     ) -> Result<HashMap<String, String>> {
         let mut priv_opts = vec![];
         let mut pub_opts = vec![];
@@ -208,7 +218,7 @@ fn decrypt_layer_key_opts_data(dc: &DecryptConfig, desc: &OciDescriptor) -> Resu
         if let Some(annotations) = desc.annotations.as_ref() {
             if let Some(b64_annotation) = annotations.get(annotations_id) {
                 let keywrapper = get_key_wrapper(scheme)?;
-                if keywrapper.no_possible_keys(&dc.param) {
+                if !keywrapper.probe(&dc.param) {
                     continue;
                 }
 
@@ -240,7 +250,10 @@ pub fn encrypt_layer<'a, R: 'a + Read>(
     ec: &EncryptConfig,
     layer_reader: R,
     desc: &OciDescriptor,
-) -> Result<(Option<impl Read + Finalizer + 'a>, EncLayerFinalizer)> {
+) -> Result<(
+    Option<impl Read + EncryptionFinalizer + 'a>,
+    EncLayerFinalizer,
+)> {
     let mut encrypted = false;
     for (annotations_id, _scheme) in KEY_WRAPPERS_ANNOTATIONS.iter() {
         if let Some(annotations) = desc.annotations.as_ref() {
@@ -262,11 +275,11 @@ pub fn encrypt_layer<'a, R: 'a + Read>(
         let mut lbch = LayerBlockCipherHandler::new()?;
         let mut lbco = LayerBlockCipherOptions::default();
 
-        lbch.encrypt(layer_reader, &AES256CTR.to_string(), &mut lbco)?;
+        lbch.encrypt(layer_reader, AES256CTR, &mut lbco)?;
         lbco.private.digest = desc.digest.clone();
         let enc_layer_finalizer = EncLayerFinalizer { lbco };
 
-        Ok((lbch.aes_ctr_block_cipher, enc_layer_finalizer))
+        Ok((Some(lbch), enc_layer_finalizer))
     } else {
         Ok((None, EncLayerFinalizer::default()))
     }
@@ -300,66 +313,70 @@ pub fn decrypt_layer<R: Read>(
 
     lbch.decrypt(layer_reader, &mut opts)?;
 
-    Ok((lbch.aes_ctr_block_cipher, opts.private.digest))
+    Ok((Some(lbch), opts.private.digest))
 }
 
-//#[cfg(test)]
-//mod tests {
-//    use super::*;
-//    use sha2::{Digest, Sha256};
-//    use std::fs;
-//    use std::path::PathBuf;
-//
-//    #[test]
-//    fn test_encrypt_decrypt_layer() {
-//        let path = load_data_path();
-//        let pub_key_file = format!("{}/{}", path, "public_key.pem");
-//        let pub_key = fs::read(&pub_key_file).unwrap();
-//
-//        let priv_key_file = format!("{}/{}", path, "private_key.pem");
-//        let priv_key = fs::read(&priv_key_file).unwrap();
-//
-//        let mut ec = EncryptConfig::default();
-//        assert!(ec.encrypt_with_jwe(vec![pub_key.clone()]).is_ok());
-//        assert!(ec.encrypt_with_jwe(vec![pub_key]).is_ok());
-//
-//        let mut dc = DecryptConfig::default();
-//        assert!(dc
-//            .decrypt_with_priv_keys(vec![priv_key.to_vec()], vec![vec![]])
-//            .is_ok());
-//
-//        let layer_data: Vec<u8> = b"This is some text!".to_vec();
-//        let mut desc = OciDescriptor::default();
-//        let digest = format!("sha256:{:x}", Sha256::digest(&layer_data));
-//        desc.digest = digest.clone();
-//
-//        let (layer_encryptor, mut elf) = encrypt_layer(&ec, layer_data.as_slice(), &desc).unwrap();
-//
-//        let mut encrypted_data: Vec<u8> = Vec::new();
-//        let mut encryptor = layer_encryptor.unwrap();
-//        assert!(encryptor.read_to_end(&mut encrypted_data).is_ok());
-//        assert!(encryptor.finalized_lbco(&mut elf.lbco).is_ok());
-//
-//        if let Ok(new_annotations) = elf.finalized_annotations(&ec, &desc, Some(&mut encryptor)) {
-//            let new_desc = OciDescriptor {
-//                annotations: Some(new_annotations),
-//                ..Default::default()
-//            };
-//            let (layer_decryptor, dec_digest) =
-//                decrypt_layer(&dc, encrypted_data.as_slice(), &new_desc, false).unwrap();
-//            let mut plaintxt_data: Vec<u8> = Vec::new();
-//            let mut decryptor = layer_decryptor.unwrap();
-//
-//            assert!(decryptor.read_to_end(&mut plaintxt_data).is_ok());
-//            assert_eq!(layer_data, plaintxt_data);
-//            assert_eq!(digest, dec_digest);
-//        }
-//    }
-//
-//    fn load_data_path() -> String {
-//        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-//        path.push("data");
-//
-//        path.to_str().unwrap().to_string()
-//    }
-//}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+    use std::env;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_encrypt_decrypt_layer() {
+        let path = load_data_path();
+        let test_conf_path = format!("{}/{}", path, "ocicrypt_config.json");
+        env::set_var("OCICRYPT_KEYPROVIDER_CONFIG", &test_conf_path);
+
+        let pub_key_file = format!("{}/{}", path, "public_key.pem");
+        let pub_key = fs::read(&pub_key_file).unwrap();
+
+        let priv_key_file = format!("{}/{}", path, "private_key.pem");
+        let priv_key = fs::read(&priv_key_file).unwrap();
+
+        let mut ec = EncryptConfig::default();
+        assert!(ec.encrypt_with_jwe(vec![pub_key.clone()]).is_ok());
+        assert!(ec.encrypt_with_jwe(vec![pub_key]).is_ok());
+
+        let mut dc = DecryptConfig::default();
+        assert!(dc
+            .decrypt_with_priv_keys(vec![priv_key.to_vec()], vec![vec![]])
+            .is_ok());
+
+        let layer_data: Vec<u8> = b"This is some text!".to_vec();
+        let mut desc = OciDescriptor::default();
+        let digest = format!("sha256:{:x}", Sha256::digest(&layer_data));
+        desc.digest = digest.clone();
+
+        let (layer_encryptor, mut elf) = encrypt_layer(&ec, layer_data.as_slice(), &desc).unwrap();
+
+        let mut encrypted_data: Vec<u8> = Vec::new();
+        let mut encryptor = layer_encryptor.unwrap();
+        assert!(encryptor.read_to_end(&mut encrypted_data).is_ok());
+        assert!(encryptor.finalized_lbco(&mut elf.lbco).is_ok());
+
+        if let Ok(new_annotations) = elf.finalized_annotations(&ec, &desc, Some(&mut encryptor)) {
+            let new_desc = OciDescriptor {
+                annotations: Some(new_annotations),
+                ..Default::default()
+            };
+            let (layer_decryptor, dec_digest) =
+                decrypt_layer(&dc, encrypted_data.as_slice(), &new_desc, false).unwrap();
+            let mut plaintxt_data: Vec<u8> = Vec::new();
+            let mut decryptor = layer_decryptor.unwrap();
+
+            assert!(decryptor.read_to_end(&mut plaintxt_data).is_ok());
+            assert_eq!(layer_data, plaintxt_data);
+            assert_eq!(digest, dec_digest);
+        }
+    }
+
+    fn load_data_path() -> String {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("data");
+
+        path.to_str().unwrap().to_string()
+    }
+}
