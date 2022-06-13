@@ -7,8 +7,7 @@ use anyhow::{anyhow, Result};
 use pkcs11_uri::Pkcs11Uri;
 use rand::rngs::OsRng;
 use rsa::{pkcs8::DecodePublicKey, PaddingScheme, PublicKey, RsaPublicKey};
-// FIXME
-//use sha1::Sha1;
+use sha1::Sha1;
 use sha2::Sha256;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -404,9 +403,7 @@ fn rsa_public_encrypt_oaep(pubkey: &RsaPublicKey, plaintext: &[u8]) -> Result<(V
     match oaephash.to_lowercase().as_str() {
         "sha1" => {
             hashalg = "sha1";
-            // FIXME
-            //padding = PaddingScheme::new_oaep::<Sha1>();
-            padding = PaddingScheme::new_oaep::<Sha256>();
+            padding = PaddingScheme::new_oaep::<Sha1>();
         }
         "sha256" => {
             hashalg = "sha256";
