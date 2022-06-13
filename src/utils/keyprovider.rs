@@ -1,9 +1,9 @@
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, ::prost::Message)]
 pub struct KeyProviderKeyWrapProtocolInput {
     #[prost(bytes="vec", tag="1")]
     pub key_provider_key_wrap_protocol_input: ::prost::alloc::vec::Vec<u8>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, ::prost::Message)]
 pub struct KeyProviderKeyWrapProtocolOutput {
     #[prost(bytes="vec", tag="1")]
     pub key_provider_key_wrap_protocol_output: ::prost::alloc::vec::Vec<u8>,

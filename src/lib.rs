@@ -11,5 +11,7 @@ pub mod config;
 pub mod encryption;
 pub mod helpers;
 pub mod keywrap;
+pub mod pkcs11_uri_wrapped;
+pub mod softhsm;
 pub mod spec;
 pub mod utils;

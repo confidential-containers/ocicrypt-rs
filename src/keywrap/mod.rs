@@ -12,6 +12,8 @@ pub mod jwe;
 #[cfg(feature = "keywrap-keyprovider")]
 pub mod keyprovider;
 
+pub mod pkcs11;
+
 /// KeyWrapper is the interface used for wrapping keys using
 /// a specific encryption technology (pgp, jwe, pkcs7, pkcs11, keyprovider)
 #[allow(unused_variables)]
