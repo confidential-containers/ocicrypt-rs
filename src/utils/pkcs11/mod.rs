@@ -12,6 +12,7 @@ use rsa::{pkcs8::DecodePublicKey, PaddingScheme, PublicKey, RsaPublicKey};
 use sha2::Sha256;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt::Write;
 
 extern crate base64;
 extern crate serde_yaml;
@@ -281,7 +282,7 @@ fn find_object(
         let mut b = pkcs11::types::CK_ATTRIBUTE::new(pkcs11::types::CKA_LABEL);
         b.set_string(object_label);
         template.push(b);
-        msg += &format!("object_label '{}'", object_label);
+        write!(msg, "object_label '{}'", object_label)?;
     }
     if !object_id.is_empty() {
         let mut c = pkcs11::types::CK_ATTRIBUTE::new(pkcs11::types::CKA_ID);
@@ -470,7 +471,7 @@ fn public_encrypt_oaep(
         pParameter: oaep_p as *mut pkcs11::types::CK_VOID,
         ulParameterLen: std::mem::size_of_val(&oaep) as u64,
     };
-    let _ = p11ctx.encrypt_init(session, &mech, p11_pub_key)?;
+    p11ctx.encrypt_init(session, &mech, p11_pub_key)?;
     let ciphertext = p11ctx.encrypt(session, plaintext)?;
     Ok((ciphertext, hashalg))
 }
@@ -555,7 +556,7 @@ fn private_decrypt_oaep(
         ulParameterLen: std::mem::size_of_val(&oaep) as u64,
     };
 
-    let _ = p11ctx.decrypt_init(session, &mech, p11_priv_key)?;
+    p11ctx.decrypt_init(session, &mech, p11_priv_key)?;
 
     let plaintext = p11ctx.decrypt(session, ciphertext)?;
 
@@ -609,7 +610,7 @@ pub fn decrypt_pkcs11(
                 c
             }
             Err(e) => {
-                errs += &format!("Base64 decoding failed: {}\n", e);
+                writeln!(errs, "Base64 decoding failed: {}", e)?;
                 continue;
             }
         };
@@ -621,7 +622,7 @@ pub fn decrypt_pkcs11(
                     return Ok(x);
                 }
                 Err(e) => {
-                    errs += &format!("{:?} : {}", priv_key.uriw.p11uri, e);
+                    write!(errs, "{:?} : {}", priv_key.uriw.p11uri, e)?;
                 }
             }
         }
