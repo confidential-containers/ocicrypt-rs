@@ -28,7 +28,7 @@ impl SoftHSMSetup {
     pub fn get_config_filename(&self) -> Result<String> {
         Ok(format!(
             "{}/softhsm2.conf",
-            self.statedir_folder.path().to_string_lossy().to_string()
+            self.statedir_folder.path().to_string_lossy()
         ))
     }
 
