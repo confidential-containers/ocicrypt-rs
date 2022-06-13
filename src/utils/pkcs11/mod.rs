@@ -30,11 +30,11 @@ struct Pkcs11KeyFile {
     pkcs11: Pkcs11KeyFilePkcs11,
     module: Pkcs11KeyFileModule,
 }
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Pkcs11KeyFilePkcs11 {
     uri: String,
 }
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Pkcs11KeyFileModule {
     env: HashMap<String, String>,
 }
