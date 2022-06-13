@@ -81,9 +81,9 @@ impl KeyWrapper for Pkcs11KeyWrapper {
         "org.opencontainers.image.enc.keys.pkcs11".to_string()
     }
 
-    fn no_possible_keys(&self, dcparameters: &HashMap<String, Vec<Vec<u8>>>) -> bool {
-        self.private_keys(dcparameters).is_none()
-    }
+    //fn no_possible_keys(&self, dcparameters: &HashMap<String, Vec<Vec<u8>>>) -> bool {
+    //    self.private_keys(dcparameters).is_none()
+    //}
 
     fn private_keys(&self, dcparameters: &HashMap<String, Vec<Vec<u8>>>) -> Option<Vec<Vec<u8>>> {
         dcparameters.get("pkcs11-yamls").cloned()
@@ -91,6 +91,11 @@ impl KeyWrapper for Pkcs11KeyWrapper {
 
     fn recipients(&self, _packet: String) -> Option<Vec<String>> {
         Some(vec!["[pkcs11]".to_string()])
+    }
+
+    // TODO
+    fn probe(&self, _dc_param: &HashMap<String, Vec<Vec<u8>>>) -> bool {
+        false
     }
 }
 
