@@ -12,6 +12,8 @@ pub mod runner;
 #[rustfmt::skip]
 pub mod keyprovider;
 
+pub mod pkcs11;
+
 /// CommandExecuter trait which requires implementation for command exec, first argument is the command name, like /usr/bin/<command-name>,
 /// the second is the list of args to pass to it
 #[allow(unused_variables)]

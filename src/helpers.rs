@@ -31,28 +31,25 @@ fn process_recipient_keys(recipients: Vec<String>) -> Result<[Vec<Vec<u8>>; 6]> 
                 "pgp" => gpg_recipients.push(value.as_bytes().to_vec()),
                 "jwe" => {
                     let contents = fs::read(&value)?;
-                    // TODO: Check valid public key
+                    // FIXME: Check valid public key.
+                    // See golang's parse_helpers.processRecipientKeys and
+                    // utils.IsPublicKey.
                     pubkeys.push(contents);
                 }
                 "pkcs7" => {
                     let contents = fs::read(&value)?;
-                    // TODO: Check valid certificate
+                    // FIXME: Check valid certificate.
+                    // See golang's parse_helpers.processRecipientKeys and
+                    // utils.IsCertificate.
                     x509s.push(contents);
                 }
                 "pkcs11" => {
                     let contents = fs::read(&value)?;
-                    // TODO: Check valid pkcs11 public key or normal public key
+                    // FIXME: Check valid pkcs11 public key or normal public key.
+                    // See golang's parse_helpers.processRecipientKeys and
+                    // utils.IsPkcs11PublicKey and .IsPublicKey.
                     pkcs11_yamls.push(contents.clone());
                     pkcs11_pubkeys.push(contents);
-                    /*
-                    if true {
-                        pkcs11_yamls.push(contents);
-                    } else if true {
-                        pkcs11_pubkeys.push(contents);
-                    } else {
-                        return Err(anyhow!("Provided file is not a public key"));
-                    }
-                    */
                 }
                 "provider" => key_providers.push(value.as_bytes().to_vec()),
                 _ => return Err(anyhow!("Provided protocol not recognized")),
@@ -82,8 +79,8 @@ fn process_x509_certs(keys: Vec<String>) -> Result<Vec<Vec<u8>>> {
             continue;
         }
         let contents = fs::read(name)?;
-        // TODO: Check valid certificate
-
+        // FIXME: Check valid certificate. See golang's
+        // parse_helpers.processx509Certs and utils.IsCertificate.
         x509s.push(contents);
     }
 
@@ -146,7 +143,9 @@ fn process_private_keyfiles(keyfiles_and_pwds: Vec<String>) -> Result<[Vec<Vec<u
 
             let contents = fs::read(&keyfile_and_pwd[..index])?;
 
-            // TODO: Check valid pkcs11 public key or normal public key
+            // FIXME: Validity checks. See golang's
+            // parse_helpers.processPrivateKeyFiles and utils.IsPrivateKey,
+            // .IsPkcs11PrivateKey, and .IsGPGPrivateKeyRing.
             pkcs11_yamls.push(contents.clone());
             priv_keys.push(contents.clone());
             priv_keys_passwords.push(password.clone());
