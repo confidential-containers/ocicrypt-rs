@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::io::Read;
 
 use anyhow::{anyhow, Result};
+use log::warn;
 
 use crate::blockcipher::{
     EncryptionFinalizer, LayerBlockCipherHandler, LayerBlockCipherOptions,
@@ -187,9 +188,17 @@ pub fn decrypt_layer_key_opts_data(
                 priv_key_given = true;
             }
 
-            if let Ok(opts_data) = pre_unwrap_key(keywrapper, dc, &b64_annotation) {
-                if !opts_data.is_empty() {
-                    return Ok(opts_data);
+            match pre_unwrap_key(keywrapper, dc, &b64_annotation) {
+                Ok(opts_data) => {
+                    if !opts_data.is_empty() {
+                        return Ok(opts_data);
+                    }
+
+                    warn!("Get empty opts data when unwraping key from keyprovider {scheme}");
+                    continue;
+                }
+                Err(e) => {
+                    warn!("Error occurs when unwraping key from keyprovider: {e}");
                 }
             }
             // try next keywrapper
