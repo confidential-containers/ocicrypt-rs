@@ -448,8 +448,8 @@ impl KeyProviderKeyWrapper {
             });
             match handler.join() {
                 Ok(Ok(v)) => Ok(v),
-                Ok(Err(e)) => bail!("failed to unwrap key by gRPC, {e}"),
-                Err(e) => bail!("failed to unwrap key by gRPC, {e:?}"),
+                Ok(Err(e)) => bail!("failed to unwrap key by ttrpc, {e}"),
+                Err(e) => bail!("failed to unwrap key by ttrpc, {e:?}"),
             }
         }
     }
